@@ -1,0 +1,14 @@
+---
+title: 'HarvardX: PH125.9x Data Science: Capstone - "Choose Your Own"" Project: Predicting house prices'
+author: "Martin Weihrauch"
+date: "31 Januar 2019"
+output: pdf_document
+  toc: true
+  toc_depth: 3
+  number_sections: true
+---
+
+# Overview
+
+## Dataset Preparation
+The house prices dataset can be found on [**Kaggle**](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data) or, alternatively, in my [**Github repository**](https://github.com/mpwweihrauc/ML_House_Prices.git). We will work with the `test.csv` and `train.csv` files. There is also a `data_description.txt` with descriptions about all the different parameters in the dataset.
