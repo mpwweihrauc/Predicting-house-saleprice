@@ -68,52 +68,53 @@ train %>%
 # Feature engineering
 ###
 
-# Fix column encoding, as sometimes "NA" was put for the absence of a feature (e.g. when there is no pool).
-train$Alley <- str_replace_na(train$Alley, replacement = "NoAccess") # Replace NA in the Alley column with "None"
-test$Alley <- str_replace_na(test$Alley, replacement = "NoAccess") # Replace NA in the Alley column with "None"
+# To facilitate feature engineering we temporarily merge train and tet into "dataset"
+test$SalePrice <- 0
+dataset <- rbind(train, test)
 
-train$PoolQC <- str_replace_na(train$PoolQC, replacement = "NoPool") # Replace NA in the PoolQC column with "None"
-test$PoolQC <- str_replace_na(test$PoolQC, replacement = "NoPool") # Replace NA in the PoolQC column with "None"
+# We fix the column encoding, as sometimes "NA" was put for the absence of a feature (e.g. when there is no pool).
+dataset$Alley <- str_replace_na(dataset$Alley, replacement = "NoAccess") # Replace NA in the Alley column with "None"
 
-train$Fence <- str_replace_na(train$Fence, replacement = "NoFence") # Replace NA in the Fence column with "None"
-test$Fence <- str_replace_na(test$Fence, replacement = "NoFence") # Replace NA in the Fence column with "None"
+dataset$PoolQC <- str_replace_na(dataset$PoolQC, replacement = "NoPool") # Replace NA in the PoolQC column with "None"
 
-train$MiscFeature <- str_replace_na(train$MiscFeature, replacement = "None") # Replace NA in the MiscFeature column with "None"
-test$MiscFeature <- str_replace_na(test$MiscFeature, replacement = "None") # Replace NA in the MiscFeature column with "None"
 
-train$FireplaceQu <- str_replace_na(train$FireplaceQu, replacement = "NoFireplace") # Replace NA in the FirePlaceQu column with "None"
-test$FireplaceQu <- str_replace_na(test$FireplaceQu, replacement = "NoFireplace") # Replace NA in the FirePlaceQu column with "None"
+dataset$Fence <- str_replace_na(dataset$Fence, replacement = "NoFence") # Replace NA in the Fence column with "None"
 
-train$GarageCond <- str_replace_na(train$GarageCond, replacement = "NoGarage") # Replace NA in the GarageCond column with "None"
-test$GarageCond <- str_replace_na(test$GarageCond, replacement = "NoGarage") # Replace NA in the GarageCond column with "None"
 
-train$GarageQual <- str_replace_na(train$GarageQual, replacement = "NoGarage") # Replace NA in the GarageQual column with "None"
-test$GarageQual <- str_replace_na(test$GarageQual, replacement = "NoGarage") # Replace NA in the GarageQual column with "None"
+dataset$MiscFeature <- str_replace_na(dataset$MiscFeature, replacement = "None") # Replace NA in the MiscFeature column with "None"
 
-train$GarageFinish <- str_replace_na(train$GarageFinish, replacement = "NoGarage") # Replace NA in the GarageFinish column with "None"
-test$GarageFinish <- str_replace_na(test$GarageFinish, replacement = "NoGarage") # Replace NA in the GarageFinish column with "None"
 
-train$GarageType <- str_replace_na(train$GarageType, replacement = "NoGarage") # Replace NA in the GarageFinish column with "None"
-test$GarageType <- str_replace_na(test$GarageType, replacement = "NoGarage") # Replace NA in the GarageFinish column with "None"
+dataset$FireplaceQu <- str_replace_na(dataset$FireplaceQu, replacement = "NoFireplace") # Replace NA in the FirePlaceQu column with "None"
 
-train$BsmtFinType1 <- str_replace_na(train$BsmtFinType1, replacement = "NoBasement") # Replace NA in the GarageFinish column with "None"
-test$BsmtFinType1 <- str_replace_na(test$BsmtFinType1, replacement = "NoBasement") # Replace NA in the GarageFinish column with "None"
 
-train$BsmtFinType2 <- str_replace_na(train$BsmtFinType2, replacement = "NoBasement") # Replace NA in the GarageFinish column with "None"
-test$BsmtFinType2 <- str_replace_na(test$BsmtFinType2, replacement = "NoBasement") # Replace NA in the GarageFinish column with "None"
+dataset$GarageCond <- str_replace_na(dataset$GarageCond, replacement = "NoGarage") # Replace NA in the GarageCond column with "None"
 
-train$Electrical <- str_replace_na(train$Electrical, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
-test$Electrical <- str_replace_na(test$Electrical, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
 
-train$GarageYrBlt <- str_replace_na(train$GarageYrBlt, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
-test$GarageYrBlt <- str_replace_na(test$GarageYrBlt, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
+dataset$GarageQual <- str_replace_na(dataset$GarageQual, replacement = "NoGarage") # Replace NA in the GarageQual column with "None"
 
-train$Functional <- str_replace_na(train$Functional, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
-test$Functional <- str_replace_na(test$Functional, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
 
-train$SaleType <- str_replace_na(train$SaleType, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
-test$SaleType <- str_replace_na(test$SaleType, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
+dataset$GarageFinish <- str_replace_na(dataset$GarageFinish, replacement = "NoGarage") # Replace NA in the GarageFinish column with "None"
 
+
+dataset$GarageType <- str_replace_na(dataset$GarageType, replacement = "NoGarage") # Replace NA in the GarageFinish column with "None"
+
+
+dataset$BsmtFinType1 <- str_replace_na(dataset$BsmtFinType1, replacement = "NoBasement") # Replace NA in the GarageFinish column with "None"
+
+
+dataset$BsmtFinType2 <- str_replace_na(dataset$BsmtFinType2, replacement = "NoBasement") # Replace NA in the GarageFinish column with "None"
+
+
+dataset$Electrical <- str_replace_na(dataset$Electrical, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
+
+
+dataset$GarageYrBlt <- str_replace_na(dataset$GarageYrBlt, replacement = "NoGarage") # Replace NA in the GarageFinish column with "None"
+
+
+dataset$Functional <- str_replace_na(dataset$Functional, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
+
+
+dataset$SaleType <- str_replace_na(dataset$SaleType, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
 
 
 
@@ -123,7 +124,7 @@ test$SaleType <- str_replace_na(test$SaleType, replacement = "Unknown") # Replac
 
 # Dealing with missing values in the MSZoning column, which identifies the general zoning classification
 # of the sale. We plot the zoning classifications to discern any patterns.
-plot(train$MSZoning,
+plot(dataset$MSZoning,
      col = "orange",
      xlab = "Zoning Classification",
      ylab = "Count",
@@ -131,52 +132,60 @@ plot(train$MSZoning,
 
 # Clearly, the most common zoning classification is RL (Residential low density).
 # By imputing "RL" for missing MSZoning values, we have the highest chance to be correct.
-train$MSZoning[is.na(train$MSZoning)] <- "RL" # We impute "RL", the mode, for missing values in MSZoning
+dataset$MSZoning[is.na(dataset$MSZoning)] <- "RL" # We impute "RL", the mode, for missing values in MSZoning
 
 
 # Dealing with missing values concerning the basement. We take a look at all basement-related columns that have missing values. Is there a pattern?
 Bsmt_missing_vals = c("BsmtCond", "BsmtExposure", "BsmtQual", "BsmtFinType1", "BsmtFinType2")
-train[!complete.cases(train[, names(train) %in% Bsmt_missing_vals]), names(train) %in% names(train)[which(grepl("Bsmt", names(train)))]]
+dataset[!complete.cases(dataset[, names(dataset) %in% Bsmt_missing_vals]), names(dataset) %in% names(dataset)[which(grepl("Bsmt", names(dataset)))]]
 
 # All missing values related to basement can be explained by the fact that there either is no basement, or it is yet unfinished.
-# We can impute a "NoBasemet" for BsmtQual, BsmtCond, and BsmtExposure missing values. We ignore entry #949 for now.
+# We can impute a "NoBasemet" for BsmtQual, BsmtCond, and BsmtExposure missing values.
 
-train$BsmtQual[is.na(train$BsmtQual)] <- "NoBasement"
-test$BsmtQual[is.na(test$BsmtQual)] <- "NoBasement"
+# We convert to a character, add the NA replacement and change back to factor
+dataset$BsmtQual <- as.character(dataset$BsmtQual)
+dataset$BsmtQual[is.na(dataset$BsmtQual)] <- "NoBasement"
+dataset$BsmtQual <- as.factor(dataset$BsmtQual)
 
-train$BsmtExposure[is.na(train$BsmtExposure)] <- "NoBasement"
-test$BsmtExposure[is.na(test$BsmtExposure)] <- "NoBasement"
+dataset$BsmtExposure <- as.character(dataset$BsmtExposure)
+dataset$BsmtExposure[is.na(dataset$BsmtExposure)] <- "NoBasement"
+dataset$BsmtExposure <- as.factor(dataset$BsmtExposure)
 
-train$BsmtCond[is.na(train$BsmtCond)] <- "NoBasement"
-test$BsmtCond[is.na(test$BsmtCond)] <- "NoBasement"
+dataset$BsmtCond <- as.character(dataset$BsmtCond)
+dataset$BsmtCond[is.na(dataset$BsmtCond)] <- "NoBasement"
+dataset$BsmtCond <- as.factor(dataset$BsmtCond)
+
+# We replace the remaining NAs in BsmtFullBath and BsmtHalfBath with 0 as they have "NoBasement"
+dataset$BsmtFullBath[is.na(dataset$BsmtFullBath)] <- 0
+dataset$BsmtHalfBath[is.na(dataset$BsmtHalfBath)] <- 0
+
 
 
 # Dealing with missing values in MasVnrType and MasVnrArea. We observe that MasVnrType equal to "None" can still have an area.
 # We take a look at a summary of the features without missing values to get an idea about their mode.
-plot(train[, c("MasVnrType", "MasVnrArea")],
+plot(dataset[, c("MasVnrType", "MasVnrArea")],
      col = "orange",
      main = "MasVnrType vs MasVnrArea"
      )
 
-summary(train$MasVnrType[!is.na(train$MasVnrType)]) # Looking at MasVnrType without missing values
-summary(train$MasVnrArea[!is.na(train$MasVnrArea)]) # Looking at MasVnrArea without missing values
+summary(dataset$MasVnrType[!is.na(dataset$MasVnrType)]) # Looking at MasVnrType without missing values
+summary(dataset$MasVnrArea[!is.na(dataset$MasVnrArea)]) # Looking at MasVnrArea without missing values
 
 # Since "None" is the most common value of type, we impute "None" for MasVnrType and 0 for the area.
-train$MasVnrType[is.na(train$MasVnrType)] <- "None"
-train$MasVnrArea[is.na(train$MasVnrArea)] <- 0
-
-test$MasVnrType[is.na(test$MasVnrType)] <- "None"
-test$MasVnrArea[is.na(test$MasVnrArea)] <- 0
+dataset$MasVnrType[is.na(dataset$MasVnrType)] <- "None"
+dataset$MasVnrArea[is.na(dataset$MasVnrArea)] <- 0
 
 
 
+
+#########################################################################################################
 # Dealing with missing values in LotFrontage, which are the linear feet of street connected to property.
 # LotFrontage might be closely correlated to the LotArea, the lot size in square feet.
 
 # We plot log-transformed LotArea against LotFrontage. Indeed, there seems to be a positive correlation
 # between LotFrontage and LotArea as shown by the fitted general additive model explaining 
 # LotFrontage as a smooth function of LotArea.
-train %>%
+dataset %>%
   ggplot(aes(x = log(LotArea), y = log(LotFrontage))) +
   geom_point() +
   geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"))
@@ -184,16 +193,157 @@ train %>%
 # We can assume that other features might also be informative about LotFrontage, so we include
 # them in a random forest regression model below.
 
-library(ranger)
-index <- which(is.na(train$LotFrontage))
-train_subset <- train[-index, ]
-LotFrontage_model <- ranger(LotFrontage ~ LotArea + Street + LotShape + LandContour + LotConfig + LandSlope + Neighborhood + BldgType, data = train_subset)
-LotFrontage_pred <-predict(LotFrontage_model, data = train[index, ])
-LotFrontage_pred$predictions
+library(xgboost)
+library(vtreat)
+library(magrittr)
+
+# We separate "dataset" into test and train by filtering out the rows with missing LotFrontage
+LF_index <- which(is.na(dataset$LotFrontage))
+LF_train <- dataset[-LF_index, ]
+LF_test <- dataset[LF_index, ]
+
+
+
+# We select all variables that might influence LotFrontage
+variables <- c("LotArea", "Street", "LotShape", "LandContour", "LotConfig", "LandSlope",
+               "Neighborhood", "BldgType")
+
+# The vtreat function designTreatmentsZ helps encode all variables numerically
+treatment_plan <- designTreatmentsZ(LF_train, variables) # Devise a treatment plan for the variables
+(newvars <- treatment_plan %>%
+    use_series(scoreFrame) %>%        
+    filter(code %in% c("clean", "lev")) %>%  # get the rows you care about
+    use_series(varName))           # get the varName column
+
+train_treated <- prepare(treatment_plan, LF_train,  varRestriction = newvars)
+test_treated <- prepare(treatment_plan, LF_test,  varRestriction = newvars)
+
+str(train_treated)
+str(test_treated)
+
+
+cv <- xgb.cv(data = as.matrix(train_treated), 
+             label = LF_train$LotFrontage,
+             nrounds = 100,
+             nfold = 5,
+             objective = "reg:linear",
+             eta = 0.3,
+             max_depth = 6,
+             early_stopping_rounds = 10,
+             verbose = 0)    # silent
+
+elog <- cv$evaluation_log # Get the evaluation log of the cross-validation so we can find the number of trees to use to minimize RMSE without overfitting the training data
+
+elog %>% 
+  summarize(ntrees.train = which.min(train_rmse_mean),   # find the index of min(train_rmse_mean)
+            ntrees.test  = which.min(test_rmse_mean))   # find the index of min(test_rmse_mean)
+
+# Next we run xgboost with the information gained by running xgboost cross-validation
+LotFrontage_model_xgb <- xgboost(data = as.matrix(train_treated), # Treated training data as a matrix
+                          label = LF_train$LotFrontage,  # Column of outcomes from original data
+                          nrounds = 10,       # number of trees to build, which we determined via cross-validation
+                          objective = "reg:linear", # objective
+                          eta = 0.3, # The learning rate; Closer to 0 is slower, but less prone to overfitting; Closer to 1 is faster, but more likely to overfit
+                          max_depth = 6,
+                          verbose = 0)  # silent
+
+# Now we can predict LotFrontage
+LF_test$LotFrontagePred <- predict(LotFrontage_model_xgb, newdata = as.matrix(test_treated)) # We predict LotFrontage; newdata has to be a matrix
 
 # We use the predicted values for imputation
-train$LotFrontage[index] <- LotFrontage_pred$predictions
-summary(train)
+dataset$LotFrontage[LF_index] <- LF_test$LotFrontagePred
+summary(dataset)
+
+# The missing values for LotFrontage were imputed with xgboost-predicted values based on `variables`
+
+
+
+
+
+
+
+
+
+### Other remaining missing values ###
+
+# There is one missing value in GarageCars and GarageArea - maybe this comes from the same house which doesn't have a garage?
+garage_NA_ind <- which(is.na(dataset$GarageArea)) # Find the row with the missing GarageArea
+print(dataset[garage_NA_ind, ]) # Look at the entry with the id 2577 and realize that there is "NoGarage" in multiple garage-related columns
+
+# We can replace the missing values in GarageCars and GarageArea with "NoGarage"
+dataset$GarageCars[garage_NA_ind] <- "NoGarage"
+dataset$GarageArea[garage_NA_ind] <- "NoGarage"
+
+
+# There is one NA remaining in KitchenQual, but is not immediately evident why it is missing
+dataset[which(is.na(dataset$KitchenQual)), ]
+
+# From the plot it appears that a "TA" = "Typical" kitchen is the most common (mode); will will impute that for the single missing value
+plot(dataset$KitchenQual,
+     col = "orange",
+     xlab = "Kitchen quality",
+     ylab = "Count",
+     main = "Kitchen quality")
+
+dataset$KitchenQual[which(is.na(dataset$KitchenQual))] <- "TA" # We impute "TA" as in "typical" kitchen quality due to it being most likely
+
+
+
+# There is one value missing in TotalBsmtSF - does this house even have a basement?
+dataset[which(is.na(dataset$TotalBsmtSF)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
+dataset$TotalBsmtSF[which(is.na(dataset$TotalBsmtSF))] <- 0 # This house has no basement and thus 0 total basement square feet area
+
+
+# There is one value missing in BsmtFinSF1 - does this house even have a basement?
+dataset[which(is.na(dataset$BsmtFinSF1)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
+dataset$BsmtFinSF1[which(is.na(dataset$BsmtFinSF1))] <- 0 # This house has no basement and thus 0 total basement square feet area
+
+# There is one value missing in BsmtFinSF2 - does this house even have a basement?
+dataset[which(is.na(dataset$BsmtFinSF2)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
+dataset$BsmtFinSF2[which(is.na(dataset$BsmtFinSF2))] <- 0 # This house has no basement and thus 0 total basement square feet area
+
+# There is one value missing in BsmtUnfSF - does this house even have a basement?
+dataset[which(is.na(dataset$BsmtUnfSF)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
+dataset$BsmtUnfSF[which(is.na(dataset$BsmtUnfSF))] <- 0 # This house has no basement and thus 0 total basement square feet area
+
+
+
+
+
+# There is one value missing in Exterior1st and Exterior2nd
+dataset[which(is.na(dataset$Exterior1st)), ] #We take a look at the entry with the missing value; it has typical exterior quality
+dataset %>% select(Exterior1st) %>% group_by(Exterior1st) %>% tally() # VinylSd is the mode
+dataset %>% select(Exterior2nd) %>% group_by(Exterior2nd) %>% tally() # VinylSd is the mode
+
+# We impute the most common type of exterior
+dataset$Exterior1st[which(is.na(dataset$Exterior1st))] <- "VinylSd"
+dataset$Exterior2nd[which(is.na(dataset$Exterior2nd))] <- "VinylSd"
+
+
+
+# There are two missing values in Utilities
+dataset[which(is.na(dataset$Utilities)), ] # Both houses appear pretty typical, so we will go with the most common value for Utilities: AllPub
+
+dataset %>% select(Utilities) %>% group_by(Utilities) %>% count()
+
+dataset$Utilities[which(is.na(dataset$Utilities))] <- "AllPub"
+
+
+
+
+############################################################################################################
+### All missing values have been dealt with and we can once again separate `dataset` into train and test ###
+train <- dataset[train$Id, ]                                                                             ###
+test <- dataset[test$Id, ]                                                                               ###
+############################################################################################################
+
+
+
+
+
+
+
+
 
 
 
