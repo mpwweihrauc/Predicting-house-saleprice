@@ -105,16 +105,7 @@ dataset$BsmtFinType1 <- str_replace_na(dataset$BsmtFinType1, replacement = "NoBa
 dataset$BsmtFinType2 <- str_replace_na(dataset$BsmtFinType2, replacement = "NoBasement") # Replace NA in the GarageFinish column with "None"
 
 
-dataset$Electrical <- str_replace_na(dataset$Electrical, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
-
-
 dataset$GarageYrBlt <- str_replace_na(dataset$GarageYrBlt, replacement = "NoGarage") # Replace NA in the GarageFinish column with "None"
-
-
-dataset$Functional <- str_replace_na(dataset$Functional, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
-
-
-dataset$SaleType <- str_replace_na(dataset$SaleType, replacement = "Unknown") # Replace NA in the GarageFinish column with "None"
 
 
 
@@ -176,6 +167,92 @@ dataset$MasVnrType[is.na(dataset$MasVnrType)] <- "None"
 dataset$MasVnrArea[is.na(dataset$MasVnrArea)] <- 0
 
 
+# There is one missing value in Electrical
+which(is.na(dataset$Electrical))
+dataset[1380, ] # The house with the missing Electrical value seems pretty normal
+
+# From the plot we can see that SBrkr or standard circuit breakers are the most common value
+plot(dataset[, "Electrical"],
+     col = "orange",
+     main = "Electrical"
+)
+
+# We impute SBrkr as it is the most common, standard Electrical entry
+dataset$Electrical[which(is.na(dataset$Electrical))] <- "SBrkr"
+
+
+# There is one missing value in GarageCars and GarageArea - maybe this comes from the same house which doesn't have a garage?
+garage_NA_ind <- which(is.na(dataset$GarageArea)) # Find the row with the missing GarageArea
+print(dataset[garage_NA_ind, ]) # Look at the entry with the id 2577 and realize that there is "NoGarage" in multiple garage-related columns
+
+# We can replace the missing values in GarageCars and GarageArea with "NoGarage"
+dataset$GarageCars[garage_NA_ind] <- "NoGarage"
+dataset$GarageArea[garage_NA_ind] <- "NoGarage"
+
+
+# There is one NA remaining in KitchenQual, but is not immediately evident why it is missing
+dataset[which(is.na(dataset$KitchenQual)), ]
+
+# From the plot it appears that a "TA" = "Typical" kitchen is the most common (mode); will will impute that for the single missing value
+plot(dataset$KitchenQual,
+     col = "orange",
+     xlab = "Kitchen quality",
+     ylab = "Count",
+     main = "Kitchen quality")
+
+dataset$KitchenQual[which(is.na(dataset$KitchenQual))] <- "TA" # We impute "TA" as in "typical" kitchen quality due to it being most likely
+
+
+
+# There is one value missing in TotalBsmtSF - does this house even have a basement?
+dataset[which(is.na(dataset$TotalBsmtSF)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
+dataset$TotalBsmtSF[which(is.na(dataset$TotalBsmtSF))] <- 0 # This house has no basement and thus 0 total basement square feet area
+
+
+# There is one value missing in BsmtFinSF1 - does this house even have a basement?
+dataset[which(is.na(dataset$BsmtFinSF1)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
+dataset$BsmtFinSF1[which(is.na(dataset$BsmtFinSF1))] <- 0 # This house has no basement and thus 0 total basement square feet area
+
+# There is one value missing in BsmtFinSF2 - does this house even have a basement?
+dataset[which(is.na(dataset$BsmtFinSF2)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
+dataset$BsmtFinSF2[which(is.na(dataset$BsmtFinSF2))] <- 0 # This house has no basement and thus 0 total basement square feet area
+
+# There is one value missing in BsmtUnfSF - does this house even have a basement?
+dataset[which(is.na(dataset$BsmtUnfSF)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
+dataset$BsmtUnfSF[which(is.na(dataset$BsmtUnfSF))] <- 0 # This house has no basement and thus 0 total basement square feet area
+
+
+# There is one value missing in Exterior1st and Exterior2nd
+dataset[which(is.na(dataset$Exterior1st)), ] #We take a look at the entry with the missing value; it has typical exterior quality
+dataset %>% select(Exterior1st) %>% group_by(Exterior1st) %>% tally() # VinylSd is the mode
+dataset %>% select(Exterior2nd) %>% group_by(Exterior2nd) %>% tally() # VinylSd is the mode
+
+# We impute the most common type of exterior
+dataset$Exterior1st[which(is.na(dataset$Exterior1st))] <- "VinylSd"
+dataset$Exterior2nd[which(is.na(dataset$Exterior2nd))] <- "VinylSd"
+
+
+# There are two missing values in Utilities
+dataset[which(is.na(dataset$Utilities)), ] # Both houses appear pretty typical, so we will go with the most common value for Utilities: AllPub
+
+dataset %>% select(Utilities) %>% group_by(Utilities) %>% count()
+
+dataset$Utilities[which(is.na(dataset$Utilities))] <- "AllPub"
+
+
+# There is a missing value in SaleType
+dataset[which(is.na(dataset$SaleType)), ] # We take a look at the house with the missing SaleType; its SaleCOndition is normal
+plot(dataset[, "SaleType"],
+     col = "orange",
+     ylab = "Number of houses",
+     xlab = "Sale type",
+     main = "Sale type"
+)
+
+# From the plot we can see that WD or "Warranty deal conventional" is the most common value by far
+# We will impute WD as it is the most likely value
+
+dataset$SaleType[which(is.na(dataset$SaleType))] <- "WD"
 
 
 #########################################################################################################
@@ -191,7 +268,7 @@ dataset %>%
   geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"))
 
 # We can assume that other features might also be informative about LotFrontage, so we include
-# them in a random forest regression model below.
+# them in a gradient boosting machine model below
 
 library(xgboost)
 library(vtreat)
@@ -264,69 +341,28 @@ summary(dataset)
 
 
 
-### Other remaining missing values ###
-
-# There is one missing value in GarageCars and GarageArea - maybe this comes from the same house which doesn't have a garage?
-garage_NA_ind <- which(is.na(dataset$GarageArea)) # Find the row with the missing GarageArea
-print(dataset[garage_NA_ind, ]) # Look at the entry with the id 2577 and realize that there is "NoGarage" in multiple garage-related columns
-
-# We can replace the missing values in GarageCars and GarageArea with "NoGarage"
-dataset$GarageCars[garage_NA_ind] <- "NoGarage"
-dataset$GarageArea[garage_NA_ind] <- "NoGarage"
 
 
-# There is one NA remaining in KitchenQual, but is not immediately evident why it is missing
-dataset[which(is.na(dataset$KitchenQual)), ]
-
-# From the plot it appears that a "TA" = "Typical" kitchen is the most common (mode); will will impute that for the single missing value
-plot(dataset$KitchenQual,
-     col = "orange",
-     xlab = "Kitchen quality",
-     ylab = "Count",
-     main = "Kitchen quality")
-
-dataset$KitchenQual[which(is.na(dataset$KitchenQual))] <- "TA" # We impute "TA" as in "typical" kitchen quality due to it being most likely
+#########################################################################
+### Variable encoding & Skewness ########################################
+#########################################################################
+# We compute the skewness of all numerical features and identify features with a skewness > 0.75 for train and test.
+# Before we can identify all numerical features, we make sure that no actual factors are encoded as numerics.
+# Additionally, some numeric/integer columns which are actually categorical have to be changed into a factor.
+# We define feature_vector, containing all features to be changed into factors.
+dataset$GarageArea <- as.numeric(dataset$GarageArea) # We fix GarageArea to be a numeric instead of a character variable
+dataset$GarageArea[2577] <- 0 # An NA was introduced due to the prior conversion. This house simply has no garage and therefore 0 GarageArea
 
 
+feature_vector <- c("MSSubClass", "Alley", "OverallQual", "OverallCond", "YearBuilt",
+                    "YearRemodAdd", "BsmtFinType1", "BsmtFinType2", "BsmtFullBath", "BsmtHalfBath", "Electrical",
+                    "BedroomAbvGr", "KitchenAbvGr", "TotRmsAbvGrd", "GarageType", "GarageFinish",
+                    "GarageYrBlt", "GarageCars","GarageQual", "GarageCond", "MoSold", "YrSold", "FullBath",
+                    "HalfBath", "Fireplaces", "Functional", "FireplaceQu", "PoolQC", "Fence", "MiscFeature", "SaleType")
+dataset[, feature_vector] <- map(dataset[, feature_vector], factor)
 
-# There is one value missing in TotalBsmtSF - does this house even have a basement?
-dataset[which(is.na(dataset$TotalBsmtSF)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
-dataset$TotalBsmtSF[which(is.na(dataset$TotalBsmtSF))] <- 0 # This house has no basement and thus 0 total basement square feet area
-
-
-# There is one value missing in BsmtFinSF1 - does this house even have a basement?
-dataset[which(is.na(dataset$BsmtFinSF1)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
-dataset$BsmtFinSF1[which(is.na(dataset$BsmtFinSF1))] <- 0 # This house has no basement and thus 0 total basement square feet area
-
-# There is one value missing in BsmtFinSF2 - does this house even have a basement?
-dataset[which(is.na(dataset$BsmtFinSF2)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
-dataset$BsmtFinSF2[which(is.na(dataset$BsmtFinSF2))] <- 0 # This house has no basement and thus 0 total basement square feet area
-
-# There is one value missing in BsmtUnfSF - does this house even have a basement?
-dataset[which(is.na(dataset$BsmtUnfSF)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
-dataset$BsmtUnfSF[which(is.na(dataset$BsmtUnfSF))] <- 0 # This house has no basement and thus 0 total basement square feet area
-
-
-
-
-
-# There is one value missing in Exterior1st and Exterior2nd
-dataset[which(is.na(dataset$Exterior1st)), ] #We take a look at the entry with the missing value; it has typical exterior quality
-dataset %>% select(Exterior1st) %>% group_by(Exterior1st) %>% tally() # VinylSd is the mode
-dataset %>% select(Exterior2nd) %>% group_by(Exterior2nd) %>% tally() # VinylSd is the mode
-
-# We impute the most common type of exterior
-dataset$Exterior1st[which(is.na(dataset$Exterior1st))] <- "VinylSd"
-dataset$Exterior2nd[which(is.na(dataset$Exterior2nd))] <- "VinylSd"
-
-
-
-# There are two missing values in Utilities
-dataset[which(is.na(dataset$Utilities)), ] # Both houses appear pretty typical, so we will go with the most common value for Utilities: AllPub
-
-dataset %>% select(Utilities) %>% group_by(Utilities) %>% count()
-
-dataset$Utilities[which(is.na(dataset$Utilities))] <- "AllPub"
+# We take a look at the structure after teh modifications
+str(dataset)
 
 
 
@@ -347,24 +383,10 @@ test <- dataset[test$Id, ]                                                      
 
 
 
-# We compute the skewness of all numerical features and identify features with a skewness > 0.75 for train and test.
-# Before we can identify all numerical features, we make sure that no actual factors are encoded as numerics.
 
-# We change all character columns into factors
-train <- train %>% mutate_if(is.character, factor) # Change character columns to factors
-test <- test %>% mutate_if(is.character, factor)
 
-# Additionally, some numeric/integer columns which are actually categorical have to be changed into a factor.
-# We define feature_vector, containing all features to be changed into factors.
-feature_vector <- c("MSSubClass", "MSZoning", "Street", "OverallQual", "OverallCond", "YearBuilt",
-                    "YearRemodAdd", "BsmtFullBath", "BsmtHalfBath", "BedroomAbvGr", "KitchenAbvGr",
-                    "TotRmsAbvGrd", "GarageYrBlt", "GarageCars", "MoSold", "YrSold", "FullBath",
-                    "HalfBath", "Fireplaces", "GarageType", "GarageFinish")
-train[, feature_vector] <- map(train[, feature_vector], factor)
-test[, feature_vector] <- map(test[, feature_vector], factor)
 
-# We take a look at the changed structure of the dataset
-str(train)
+
 
 
 
@@ -440,6 +462,20 @@ test_index <- createDataPartition(train$SalePrice, p = 0.2, list = FALSE)
 train_set <- train[-test_index, ]
 test_set <- train[test_index, ]
 
-# Model 1: Simple linear regression as a baseline. Id is removed as it has no predictive value.
-model_1_lm <- lm(SalePrice ~ ., data = train[, -Id])
-model_1_pred <- predict(model_1_lm, newdata = test[, -Id])
+# 1. Model 1: Simple linear regression as a baseline.
+# As our first, very simple model we predict house sale price via linear regression of the LotArea.
+# We generate a table to keep track of the RMSEs our various models generate.
+
+model_1_lm <- lm(SalePrice ~ LotArea, data = train_set) # Linear regression with a single predictor
+model_1_pred <- predict(model_1_lm, newdata = test_set) # Predict on test_set
+
+model_1_lm_RMSE <- RMSE(model_1_pred, test_set$SalePrice) # Calculate RMSE
+
+model_rmses <- data_frame(Model = "Model_1_lm", RMSE = model_1_lm_RMSE) # Record RMSE of Model 1
+
+model_rmses %>% knitr::kable()
+
+# 2. Model 2: Multivariate linear regression with all predictors.
+# In our second model, we use all available predictors.
+
+model_2_lm <- lm(SalePrice ~ ., data = train_set[, -1])
