@@ -8,6 +8,10 @@ if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-
 if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
 if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
 if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.org")
+if(!require(xgboost)) install.packages("xgboost", repos = "http://cran.us.r-project.org")
+if(!require(magrittr)) install.packages("magrittr", repos = "http://cran.us.r-project.org")
+if(!require(vtreat)) install.packages("vtreat", repos = "http://cran.us.r-project.org")
+
 
 # We import the training and testing data subsets (files from Kaggle)
 train <- read.csv("train.csv", stringsAsFactors = TRUE)
@@ -185,9 +189,9 @@ dataset$Electrical[which(is.na(dataset$Electrical))] <- "SBrkr"
 garage_NA_ind <- which(is.na(dataset$GarageArea)) # Find the row with the missing GarageArea
 print(dataset[garage_NA_ind, ]) # Look at the entry with the id 2577 and realize that there is "NoGarage" in multiple garage-related columns
 
-# We can replace the missing values in GarageCars and GarageArea with "NoGarage"
-dataset$GarageCars[garage_NA_ind] <- "NoGarage"
-dataset$GarageArea[garage_NA_ind] <- "NoGarage"
+# We can replace the missing values in GarageCars and GarageArea with 0.
+dataset$GarageCars[garage_NA_ind] <- 0
+dataset$GarageArea[garage_NA_ind] <- 0
 
 
 # There is one NA remaining in KitchenQual, but is not immediately evident why it is missing
@@ -255,87 +259,125 @@ plot(dataset[, "SaleType"],
 dataset$SaleType[which(is.na(dataset$SaleType))] <- "WD"
 
 
+# There are still two missing values in Functional: Home functionality (Assume typical unless deductions are warranted) (from data description)
+dataset[which(is.na(dataset$Functional)), ] # The OverallCond of one house and the OverallQual of the other are at 1!
+
+# What kind of Functional values do houses with an OverallCond of only 1 and OverallQual 4 have most likely?
+dataset[dataset$OverallCond == 1 & dataset$OverallQual == 4, ]$Functional %>% plot() # There is only one other house like this, with similar YearBuilt
+
+# As the houses are very similar from various attributes, we will impute a Functional of "Typ" typical
+dataset$Functional[2474] <- "Typ"
+
+# The other house with missing Functional...
+dataset[dataset$OverallCond == 5 & dataset$OverallQual == 1, ]$Functional %>% plot() # There is no house like it
+dataset[dataset$OverallQual == 1, ]$Functional %>% plot() # Low-quality houses tend to be "Maj1", "Mod", or "Typ"
+dataset[dataset$OverallCond == 5, ]$Functional %>% plot() # Houses with average condition tend to be "Typ", typical
+
+dataset$Functional %>% plot() # The mode is "Typ", which we will therefore impute in this case
+
+dataset$Functional[2217] <- "Typ"
+
+
 #########################################################################################################
 # Dealing with missing values in LotFrontage, which are the linear feet of street connected to property.
 # LotFrontage might be closely correlated to the LotArea, the lot size in square feet.
 
 # We plot log-transformed LotArea against LotFrontage. Indeed, there seems to be a positive correlation
 # between LotFrontage and LotArea as shown by the fitted general additive model explaining 
-# LotFrontage as a smooth function of LotArea.
+# LotFrontage as a smooth function of LotArea. NAs are automatically removed from the plot.
 dataset %>%
   ggplot(aes(x = log(LotArea), y = log(LotFrontage))) +
   geom_point() +
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"))
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
+  ggtitle("Linear feet of street connected to property as a function of the lot size in square feet")
 
 # We can assume that other features might also be informative about LotFrontage, so we include
-# them in a gradient boosting machine model below
+# them in a gradient boosting machine model below (xgboost package; and vtreat package for data preparation)
 
-library(xgboost)
-library(vtreat)
-library(magrittr)
 
-# We separate "dataset" into test and train by filtering out the rows with missing LotFrontage
+# We separate "dataset" into "LF" test and train by filtering out the rows with missing LotFrontage
 LF_index <- which(is.na(dataset$LotFrontage))
 LF_train <- dataset[-LF_index, ]
 LF_test <- dataset[LF_index, ]
 
 
 
-# We select all variables that might influence LotFrontage
+# We select all variables that might influence LotFrontage according to our intuition and the data description
 variables <- c("LotArea", "Street", "LotShape", "LandContour", "LotConfig", "LandSlope",
-               "Neighborhood", "BldgType")
+               "Neighborhood", "BldgType", "Condition1", "Condition2")
 
 # The vtreat function designTreatmentsZ helps encode all variables numerically
 treatment_plan <- designTreatmentsZ(LF_train, variables) # Devise a treatment plan for the variables
 (newvars <- treatment_plan %>%
-    use_series(scoreFrame) %>%        
-    filter(code %in% c("clean", "lev")) %>%  # get the rows you care about
-    use_series(varName))           # get the varName column
+    use_series(scoreFrame) %>%  # use_series() works like a $, but within pipes, so we can access scoreFrame      
+    filter(code %in% c("clean", "lev")) %>%  # We select only the rows we care about
+    use_series(varName))           # We get the varName column
 
+# The prepare() function prepares our data subsets according to the treatment plan
+# we devised above and encodes all relevant variables "newvars" numerically
 train_treated <- prepare(treatment_plan, LF_train,  varRestriction = newvars)
 test_treated <- prepare(treatment_plan, LF_test,  varRestriction = newvars)
 
+# We can now see the numerical encoding of all variables thanks to treatment and preparation above
 str(train_treated)
 str(test_treated)
 
-
-cv <- xgb.cv(data = as.matrix(train_treated), 
-             label = LF_train$LotFrontage,
-             nrounds = 100,
-             nfold = 5,
+# We conduct gradient boosting cross-validation; as the outcome variable was removed from the treated data we have to get it from the original data
+cv <- xgb.cv(data = as.matrix(train_treated),  # xgb.cv only takes a matrix of the treated, all-numerical input data
+             label = LF_train$LotFrontage, # Outcome from untreated data
+             nrounds = 100, # We go up to 100 rounds of fitting models on the remaining residuals
+             nfold = 5, # We use 5 folds for cross-validation
              objective = "reg:linear",
-             eta = 0.3,
+             eta = 0.3, # The learning rate; Closer to 0 is slower, but less prone to overfitting; Closer to 1 is faster, but more likely to overfit
              max_depth = 6,
              early_stopping_rounds = 10,
              verbose = 0)    # silent
 
+# While the RMSE may continue to decrease on more and more rounds if iteration, the test RMSE usualyl doesn't.
+# We choose the number of rounds that minimize RMSE for test
 elog <- cv$evaluation_log # Get the evaluation log of the cross-validation so we can find the number of trees to use to minimize RMSE without overfitting the training data
 
 elog %>% 
   summarize(ntrees.train = which.min(train_rmse_mean),   # find the index of min(train_rmse_mean)
             ntrees.test  = which.min(test_rmse_mean))   # find the index of min(test_rmse_mean)
 
-# Next we run xgboost with the information gained by running xgboost cross-validation
+# We save the number of trees that minimize test RMSE in ntrees
+ntrees <- elog %>% 
+  summarize(ntrees.train = which.min(train_rmse_mean),
+            ntrees.test  = which.min(test_rmse_mean)) %>%
+  use_series(ntrees.test)
+
+# Next we run the actual modelling process with the information gained by running xgboost cross-validation above
 LotFrontage_model_xgb <- xgboost(data = as.matrix(train_treated), # Treated training data as a matrix
                           label = LF_train$LotFrontage,  # Column of outcomes from original data
-                          nrounds = 10,       # number of trees to build, which we determined via cross-validation
+                          nrounds = ntrees,       # number of trees to build, which we determined via cross-validation
                           objective = "reg:linear", # objective
                           eta = 0.3, # The learning rate; Closer to 0 is slower, but less prone to overfitting; Closer to 1 is faster, but more likely to overfit
                           max_depth = 6,
                           verbose = 0)  # silent
 
-# Now we can predict LotFrontage
+# Now we can predict LotFrontage in the test set that contains all the missing LotFrontage values
 LF_test$LotFrontagePred <- predict(LotFrontage_model_xgb, newdata = as.matrix(test_treated)) # We predict LotFrontage; newdata has to be a matrix
+LF_test
 
-# We use the predicted values for imputation
+# We can plot the predicted LotFrontage values against the LotArea values in LF_test to see if we observe the
+# correlation between the two variables.
+# Indeed, the predicted LotFrontage values seem to behave in similar fashion to the actual ones we observed above in the whole dataset
+LF_test %>%
+  ggplot(aes(x = log(LotArea), y = log(LotFrontagePred))) +
+  geom_point() +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
+  ggtitle("(Predicted) linear feet of street connected to property as a function of the lot size in square feet")
+
+# We use the predicted values for imputation of LotFrontage in our dataset
 dataset$LotFrontage[LF_index] <- LF_test$LotFrontagePred
 summary(dataset)
 
-# The missing values for LotFrontage were imputed with xgboost-predicted values based on `variables`
+# The missing values for LotFrontage were imputed with xgboost-predicted values based on `variables` related to it
 
 
-
-
+# All missing values have been dealt with.
+summary(dataset)
 
 
 
@@ -359,87 +401,64 @@ feature_vector <- c("MSSubClass", "Alley", "OverallQual", "OverallCond", "YearBu
                     "BedroomAbvGr", "KitchenAbvGr", "TotRmsAbvGrd", "GarageType", "GarageFinish",
                     "GarageYrBlt", "GarageCars","GarageQual", "GarageCond", "MoSold", "YrSold", "FullBath",
                     "HalfBath", "Fireplaces", "Functional", "FireplaceQu", "PoolQC", "Fence", "MiscFeature", "SaleType")
-dataset[, feature_vector] <- map(dataset[, feature_vector], factor)
+dataset[, feature_vector] <- map(dataset[, feature_vector], factor) # We use map() from purrr to turn all features above into factors
 
 # We take a look at the structure after teh modifications
 str(dataset)
 
+###################################
+# Dealing with feature skewedness #
+###################################
+nums <- unlist(lapply(dataset, is.numeric)) # Selecting all numerical columns from dataset
 
-
-
-############################################################################################################
-### All missing values have been dealt with and we can once again separate `dataset` into train and test ###
-train <- dataset[train$Id, ]                                                                             ###
-test <- dataset[test$Id, ]                                                                               ###
-############################################################################################################
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Dealing with feature skewedness
-
-nums <- unlist(lapply(train, is.numeric)) # Selecting all numerical columns from train
-
-skewed_vals <- sapply(train[, nums], skewness) # Determining skewedness of numerical train features
-(large_skew_index <- skewed_vals > 0.75 | skewed_vals < -0.75) #Building an index for skewed features in train
+skewed_vals <- sapply(dataset[, nums], skewness) # Determining skewedness of numerical dataset features with the skewness() function
+(large_skew_index <- skewed_vals > 0.75 | skewed_vals < -0.75) #Building an index for skewed features in dataset
 
 
 # As an example, we visualize of LotArea and log-transformed LotArea.
-train %>%
+dataset %>%
   ggplot(aes(x = LotArea)) +
   geom_histogram(bins = 30) +
-  ggtitle("Linear feet of street connected to property") +
-  xlab("Linear feet of street connected to property") +
+  ggtitle("Histogram of LotArea") +
+  xlab("Lot size in square feet") +
   ylab("Number of houses")
 
-train %>%
+dataset %>%
   ggplot(aes(x = log1p(LotArea))) +
   geom_histogram(bins = 30) +
-  ggtitle("Linear feet of street connected to property") +
-  xlab("Linear feet of street connected to property") +
+  ggtitle("Histogram of log-transformed LotArea") +
+  xlab("Lot size in square feet") +
   ylab("Number of houses")
 
-# We log-transform all features with a skewness > 0.75 with the function log1p(x), which computes log(1+x). We do the same for test to keep modifications the same.
-train[, names(large_skew_index[large_skew_index == TRUE])] <- train[, names(large_skew_index[large_skew_index == TRUE])] %>% log1p()
-
-# Note: `test` does not contain a SalesPrice column.
-test[, names(large_skew_index[large_skew_index == TRUE])] <- test[, names(large_skew_index[large_skew_index == TRUE])] %>% log1p()
+# We log-transform all features with a skewness > 0.75 with the function log1p(x), which computes log(1+x).
+dataset[, names(large_skew_index[large_skew_index == TRUE])] <- dataset[, names(large_skew_index[large_skew_index == TRUE])] %>% log1p()
 
 
 # We plot LotArea and SalePrice after the log-transformation
-train %>%
+dataset %>%
   ggplot(aes(x = LotArea)) +
   geom_histogram(bins = 30) +
-  ggtitle("Linear feet of street connected to property") +
+  ggtitle("Histogram of LotArea") +
   xlab("Linear feet of street connected to property") +
   ylab("Number of houses")
 
-train %>%
+# Note: Here we only look at all SalePrices from the original train set, as the original test set doesn't contain the SalePrice column and we temporarily inserted 0s.
+dataset[train$Id, ] %>%
   ggplot(aes(x = SalePrice)) +
   geom_histogram(bins = 30) +
   ggtitle("Sale price distribution") +
   xlab("Sale price in dollars") +
   ylab("Number of houses")
+
+# Log-transformation effectively reduced skewedness of the data. They look much more normal now.
+
+
+############################################################################################################
+### All missing values have been dealt with and we can once again separate `dataset` into train and test ###
+train <- dataset[train$Id, ]                                                                             ###
+test <- dataset[test$Id, -81]   # We remove the temporary SalePrice column again                                                                            ###
+############################################################################################################
+
 
 
 
