@@ -395,62 +395,14 @@ summary(dataset)
 dataset$GarageArea <- as.numeric(dataset$GarageArea) # We fix GarageArea to be a numeric instead of a character variable
 dataset$GarageArea[2577] <- 0 # An NA was introduced due to the prior conversion. This house simply has no garage and therefore 0 GarageArea
 
-
-feature_vector <- c("MSSubClass", "Alley", "OverallQual", "OverallCond", "YearBuilt",
-                    "YearRemodAdd", "BsmtFinType1", "BsmtFinType2", "BsmtFullBath", "BsmtHalfBath", "Electrical",
-                    "BedroomAbvGr", "KitchenAbvGr", "TotRmsAbvGrd", "GarageType", "GarageFinish",
-                    "GarageYrBlt", "GarageCars","GarageQual", "GarageCond", "MoSold", "YrSold", "FullBath",
-                    "HalfBath", "Fireplaces", "Functional", "FireplaceQu", "PoolQC", "Fence", "MiscFeature", "SaleType")
+feature_vector <- c("MSSubClass", "Alley", "GarageQual", "GarageYrBlt","GarageType", "MoSold", "YrSold",
+                    "BsmtFinType1", "BsmtFinType2", "Electrical", "GarageFinish",
+                    "GarageCond", "Functional", "FireplaceQu", "PoolQC", "Fence", "MiscFeature", "SaleType")
 dataset[, feature_vector] <- map(dataset[, feature_vector], factor) # We use map() from purrr to turn all features above into factors
 
-# We take a look at the structure after teh modifications
+# We take a look at the structure after the modifications
 str(dataset)
 
-###################################
-# Dealing with feature skewedness #
-###################################
-nums <- unlist(lapply(dataset, is.numeric)) # Selecting all numerical columns from dataset
-
-skewed_vals <- sapply(dataset[, nums], skewness) # Determining skewedness of numerical dataset features with the skewness() function
-(large_skew_index <- skewed_vals > 0.75 | skewed_vals < -0.75) #Building an index for skewed features in dataset
-
-
-# As an example, we visualize of LotArea and log-transformed LotArea.
-dataset %>%
-  ggplot(aes(x = LotArea)) +
-  geom_histogram(bins = 30) +
-  ggtitle("Histogram of LotArea") +
-  xlab("Lot size in square feet") +
-  ylab("Number of houses")
-
-dataset %>%
-  ggplot(aes(x = log1p(LotArea))) +
-  geom_histogram(bins = 30) +
-  ggtitle("Histogram of log-transformed LotArea") +
-  xlab("Lot size in square feet") +
-  ylab("Number of houses")
-
-# We log-transform all features with a skewness > 0.75 with the function log1p(x), which computes log(1+x).
-dataset[, names(large_skew_index[large_skew_index == TRUE])] <- dataset[, names(large_skew_index[large_skew_index == TRUE])] %>% log1p()
-
-
-# We plot LotArea and SalePrice after the log-transformation
-dataset %>%
-  ggplot(aes(x = LotArea)) +
-  geom_histogram(bins = 30) +
-  ggtitle("Histogram of LotArea") +
-  xlab("Linear feet of street connected to property") +
-  ylab("Number of houses")
-
-# Note: Here we only look at all SalePrices from the original train set, as the original test set doesn't contain the SalePrice column and we temporarily inserted 0s.
-dataset[train$Id, ] %>%
-  ggplot(aes(x = SalePrice)) +
-  geom_histogram(bins = 30) +
-  ggtitle("Sale price distribution") +
-  xlab("Sale price in dollars") +
-  ylab("Number of houses")
-
-# Log-transformation effectively reduced skewedness of the data. They look much more normal now.
 
 
 ############################################################################################################
@@ -479,7 +431,40 @@ RMSE <- function(predicted_prices, true_prices) {
 set.seed(1)
 test_index <- createDataPartition(train$SalePrice, p = 0.2, list = FALSE)
 train_set <- train[-test_index, ]
-test_set <- train[test_index, ]
+temp <- train[test_index, ] # temporary test set
+
+# We make sure there are no entries in test_set that aren't in train_set
+test_set <- temp %>% 
+  semi_join(train_set, by = c("YearBuilt", "RoofMatl", "Exterior1st", "Exterior2nd", "Electrical",
+                              "MiscFeature")) # Variables were determined by trial and error with the lm() models below
+
+# We return the removed entries from test to train
+removed <- anti_join(temp, test_set)
+train_set <- rbind(train_set, removed)
+
+summary(train_set)
+summary(test_set)
+
+# There is not a single house with "NoSeWa" value in "Utilities" in the train_set and only a single in test_set. This predictor will not help in training an algorithm and is now removed.
+train_set <- subset(train_set, select = -Utilities)
+test_set <- subset(test_set, select = -Utilities)
+
+# Monetary values like SalePrice are often log-normal and can be skewed considerably, we determine whether SalePrice is skewed in our dataset
+train_set %>%
+  ggplot(aes(SalePrice)) +
+  geom_histogram(bins = 30, binwidth = 5000)
+
+# Indeed, SalePrice is right-skewed. We try a log-transformation. SalePrice looks much more normal now.
+train_set %>%
+  ggplot(aes(log1p(SalePrice))) +
+  geom_histogram(bins = 30)
+
+# We log-transform SalePrice.
+train_set$SalePrice <- log1p(train_set$SalePrice)
+test_set$SalePrice <- log1p(test_set$SalePrice)
+
+
+
 
 # 1. Model 1: Simple linear regression as a baseline.
 # As our first, very simple model we predict house sale price via linear regression of the LotArea.
@@ -496,5 +481,17 @@ model_rmses %>% knitr::kable()
 
 # 2. Model 2: Multivariate linear regression with all predictors.
 # In our second model, we use all available predictors.
+model_2_lm <- lm(SalePrice ~ ., data = train_set[, -1]) # We remove Id and predict with all
+model_2_pred <- predict(model_2_lm, newdata = test_set[, -1])
+model_2_lm_RMSE <- RMSE(model_2_pred, test_set$SalePrice)
 
-model_2_lm <- lm(SalePrice ~ ., data = train_set[, -1])
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_2_Multivariate_lm", RMSE = model_2_lm_RMSE))
+
+model_rmses %>% knitr::kable()
+
+# RMSE improved substantially, to below 0.14.
+# This linear regression RMSE will serve as the baseline RMSE.
+
+# We examine the multivariate lm model 2. It seems that most predictors are not significant as per p-value.
+summary(model_2_lm)
+
