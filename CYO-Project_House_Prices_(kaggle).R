@@ -108,11 +108,6 @@ dataset$BsmtFinType1 <- str_replace_na(dataset$BsmtFinType1, replacement = "NoBa
 
 dataset$BsmtFinType2 <- str_replace_na(dataset$BsmtFinType2, replacement = "NoBasement") # Replace NA in the GarageFinish column with "None"
 
-
-dataset$GarageYrBlt <- str_replace_na(dataset$GarageYrBlt, replacement = "NoGarage") # Replace NA in the GarageFinish column with "None"
-
-
-
 ###
 # Dealing with the missing values
 ###
@@ -322,6 +317,111 @@ test_treated <- prepare(treatment_plan, LF_test,  varRestriction = newvars)
 str(train_treated)
 str(test_treated)
 
+
+
+
+########### Tuning for LotFrontage
+
+# Define a grid of tuning parameters for the caret::train() function
+grid_default <- expand.grid(
+  nrounds = seq(from = 100, to = 1000, 100), # We search for the best number of rounds
+  max_depth = c(2,3,4,5,6), # We optimize tree depth
+  eta = 0.1, # We optimize learning rate
+  gamma = 0,
+  colsample_bytree = c(0.4, 0.75, 1), # We optimize column sampling
+  min_child_weight = 1, 
+  subsample = 1 
+)
+
+# Train control for caret train() function
+train_control <- caret::trainControl(
+  method = "cv", # We use 3-fold cross-validation
+  number = 3,
+  verboseIter = FALSE, # no training log
+  allowParallel = TRUE
+)
+
+# Train the xgboost model for LotFrontage
+xgb_LF_tuned <- train(
+  x = train_treated,
+  y = LF_train$LotFrontage,
+  trControl = train_control,
+  tuneGrid = grid_default,
+  method = "xgbTree",
+  verbose = TRUE
+)
+
+xgb_LF_tuned$bestTune
+
+
+# Based on the best tune values from our first optimization, we set the optimal parameters and use a lower learning rate
+grid_default <- expand.grid(
+  nrounds = seq(from = 100, to = 2000, 100), # We search for the best number of rounds
+  max_depth = 3,
+  eta = 0.01,
+  gamma = 0,
+  colsample_bytree = 0.75,
+  min_child_weight = 1, 
+  subsample = 1 
+)
+
+# Train control for caret train() function
+train_control <- caret::trainControl(
+  method = "cv", # We use 3-fold cross-validation
+  number = 3,
+  verboseIter = FALSE, # no training log
+  allowParallel = TRUE
+)
+
+# Train the xgboost model for LotFrontage
+xgb_LF_tuned_2 <- train(
+  x = train_treated,
+  y = LF_train$LotFrontage,
+  trControl = train_control,
+  tuneGrid = grid_default,
+  method = "xgbTree",
+  verbose = TRUE
+)
+
+
+xgb_LF_tuned_2$bestTune
+
+
+
+# We predict LotFrontage
+LF_test$LotFrontagePred<- predict(xgb_LF_tuned_2, newdata = as.matrix(test_treated))
+
+# Missing value imputation with the predicted values for LotFrontage
+dataset$LotFrontage[LF_index] <- LF_test$LotFrontagePred
+summary(dataset)
+
+# We can plot the predicted LotFrontage values against the LotArea values in LF_test to see if we observe the
+# correlation between the two variables.
+# Indeed, the predicted LotFrontage values seem to behave in similar fashion to the actual ones we observed above in the whole dataset
+LF_test %>%
+  ggplot(aes(x = log(LotArea), y = log(LotFrontagePred))) +
+  geom_point() +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
+  ggtitle("(Predicted) linear feet of street connected to property as a function of the lot size in square feet")
+
+
+
+
+
+
+
+
+
+# REmove previous approach?
+
+
+
+
+
+
+
+
+
 # We conduct gradient boosting cross-validation; as the outcome variable was removed from the treated data we have to get it from the original data
 cv <- xgb.cv(data = as.matrix(train_treated),  # xgb.cv only takes a matrix of the treated, all-numerical input data
              label = LF_train$LotFrontage, # Outcome from untreated data
@@ -333,7 +433,7 @@ cv <- xgb.cv(data = as.matrix(train_treated),  # xgb.cv only takes a matrix of t
              early_stopping_rounds = 10,
              verbose = 0)    # silent
 
-# While the RMSE may continue to decrease on more and more rounds if iteration, the test RMSE usualyl doesn't.
+# While the RMSE may continue to decrease on more and more rounds if iteration, the test RMSE usually doesn't.
 # We choose the number of rounds that minimize RMSE for test
 elog <- cv$evaluation_log # Get the evaluation log of the cross-validation so we can find the number of trees to use to minimize RMSE without overfitting the training data
 
@@ -376,13 +476,26 @@ summary(dataset)
 # The missing values for LotFrontage were imputed with xgboost-predicted values based on `variables` related to it
 
 
-# All missing values have been dealt with.
-summary(dataset)
+# GarageYrBuilt has some missing values, are these due to there being no Garage?
+dataset[which(is.na(dataset$GarageYrBlt)), ] %>% select(GarageYrBlt, GarageType, YearBuilt)
 
+# Some garages are Detached from home, but most missing values are due to there being no Garage
+# One possible solution to this is scaling GarageYrBuilt so it becomes a value between 0 and 1 and imputing a 0 for
+# all houses without a garage, as well as adding a column "HasGarage" with either 0 or 1.
+dataset[which(is.na(dataset$GarageYrBlt)), ] %>% select(Id, GarageYrBlt, GarageType, YearBuilt) %>% filter(GarageType == "Detchd")
+dataset$GarageYrBlt[2127] <- dataset$YearBuilt[2127]
+dataset$GarageYrBlt[2577] <- dataset$YearBuilt[2577]
 
+# We then replace the remaining missing values for houses without any garage with 0 and afterwards scale the varaible
+dataset$GarageYrBlt[which(is.na(dataset$GarageYrBlt))] <- 0 # We impute 0 for the missing garage values
+dataset$GarageYrBlt <- (dataset$GarageYrBlt - min(dataset$GarageYrBlt))/(max(dataset$GarageYrBlt) - min(dataset$GarageYrBlt)) # We normalize GarageYrBuilt to be between 0 and 1
 
+# We create a new variable "HasGarage" to indicate wheter a garage is present
 
-
+nogarageindex <- which(dataset$GarageCond == "NoGarage")
+dataset$HasGarage <- dataset$GarageCond
+dataset$HasGarage[nogarageindex] <- 0
+dataset$HasGarage[-nogarageindex] <- 1
 
 
 #########################################################################
@@ -395,7 +508,7 @@ summary(dataset)
 dataset$GarageArea <- as.numeric(dataset$GarageArea) # We fix GarageArea to be a numeric instead of a character variable
 dataset$GarageArea[2577] <- 0 # An NA was introduced due to the prior conversion. This house simply has no garage and therefore 0 GarageArea
 
-feature_vector <- c("MSSubClass", "Alley", "GarageQual", "GarageYrBlt","GarageType", "MoSold", "YrSold",
+feature_vector <- c("MSSubClass", "Alley", "GarageQual","GarageType", "MoSold", "YrSold", "HasGarage",
                     "BsmtFinType1", "BsmtFinType2", "Electrical", "GarageFinish",
                     "GarageCond", "Functional", "FireplaceQu", "PoolQC", "Fence", "MiscFeature", "SaleType")
 dataset[, feature_vector] <- map(dataset[, feature_vector], factor) # We use map() from purrr to turn all features above into factors
@@ -449,6 +562,8 @@ summary(test_set)
 train_set <- subset(train_set, select = -Utilities)
 test_set <- subset(test_set, select = -Utilities)
 
+
+
 # Monetary values like SalePrice are often log-normal and can be skewed considerably, we determine whether SalePrice is skewed in our dataset
 train_set %>%
   ggplot(aes(SalePrice)) +
@@ -495,3 +610,262 @@ model_rmses %>% knitr::kable()
 # We examine the multivariate lm model 2. It seems that most predictors are not significant as per p-value.
 summary(model_2_lm)
 
+
+
+# 3. Model 3: Gradient Boosting Machine - XGBOOST
+
+
+# We select all relevant predictors
+variables <- names(train_set)[c(-1, -80)]
+
+# The vtreat function designTreatmentsZ helps encode all variables numerically via one-hot-encoding
+treatment_plan <- designTreatmentsZ(train_set, variables) # Devise a treatment plan for the variables
+(newvars <- treatment_plan %>%
+    use_series(scoreFrame) %>%  # use_series() works like a $, but within pipes, so we can access scoreFrame      
+    filter(code %in% c("clean", "lev")) %>%  # We select only the rows we care about: catP is a "prevalence fact" and tells whether the original level was rare or common and not really useful in the model
+    use_series(varName))           # We get the varName column
+
+# The prepare() function prepares our data subsets according to the treatment plan
+# we devised above and encodes all relevant variables "newvars" numerically
+train_set_treated <- prepare(treatment_plan, train_set,  varRestriction = newvars)
+test_set_treated <- prepare(treatment_plan, test_set,  varRestriction = newvars)
+
+# We can now see the numerical encoding of all variables thanks to treatment and preparation above
+str(train_set_treated)
+str(test_set_treated)
+
+
+
+cv <- xgb.cv(data = as.matrix(train_set_treated),  # xgb.cv only takes a matrix of the treated, all-numerical input data
+             label = train_set$SalePrice, # Outcome from untreated data
+             nrounds = 100, # We go up to 100 rounds of fitting models on the remaining residuals
+             nfold = 5, # We use 5 folds for cross-validation
+             objective = "reg:linear",
+             eta = 0.3, # The learning rate; Closer to 0 is slower, but less prone to overfitting; Closer to 1 is faster, but more likely to overfit
+             max_depth = 6,
+             early_stopping_rounds = 10,
+             verbose = 0)    # silent
+
+# While the RMSE may continue to decrease on more and more rounds if iteration, the test RMSE usualyl doesn't.
+# We choose the number of rounds that minimize RMSE for test
+elog <- cv$evaluation_log # Get the evaluation log of the cross-validation so we can find the number of trees to use to minimize RMSE without overfitting the training data
+
+elog %>% 
+  summarize(ntrees.train = which.min(train_rmse_mean),   # find the index of min(train_rmse_mean)
+            ntrees.test  = which.min(test_rmse_mean))   # find the index of min(test_rmse_mean)
+
+# We save the number of trees that minimize test RMSE in ntrees
+ntrees <- elog %>% 
+  summarize(ntrees.train = which.min(train_rmse_mean),
+            ntrees.test  = which.min(test_rmse_mean)) %>%
+  use_series(ntrees.test)
+
+# Next we run the actual modelling process with the information gained by running xgboost cross-validation above
+SalePrice_model_xgb <- xgboost(data = as.matrix(train_set_treated), # Treated training data as a matrix
+                                 label = train_set$SalePrice,  # Column of outcomes from original data
+                                 nrounds = ntrees,       # number of trees to build, which we determined via cross-validation
+                                 objective = "reg:linear", # objective
+                                 eta = 0.3, # The learning rate; Closer to 0 is slower, but less prone to overfitting; Closer to 1 is faster, but more likely to overfit
+                                 max_depth = 6,
+                                 verbose = 0)  # silent
+
+# Now we can predict SalePrice in the test_set with the xgb-model
+SalePrice_model_xbg_pred <- predict(SalePrice_model_xgb, newdata = as.matrix(test_set_treated)) # We predict LotFrontage; newdata has to be a matrix
+SalePrice_model_xbg_pred
+
+model_3_xgb_RMSE <- RMSE(SalePrice_model_xbg_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_3_xgb_linreg", RMSE = model_3_xgb_RMSE))
+
+model_rmses %>% knitr::kable()
+
+# The RMSE was worsened compared to  the simple linear regression approach.
+# But can we do better? We try and tune our xgb model
+
+# Default parameters
+grid_default <- expand.grid(
+  nrounds = 100,
+  max_depth = 6,
+  eta = 0.3,
+  gamma = 0,
+  colsample_bytree = 1,
+  min_child_weight = 1,
+  subsample = 1
+)
+
+# Train control for caret train() function
+train_control <- caret::trainControl(
+  method = "none",
+  verboseIter = FALSE, # no training log
+  allowParallel = TRUE
+)
+
+xgb_untuned <- train(
+  x = train_set_treated,
+  y = train_set$SalePrice,
+  trControl = train_control,
+  tuneGrid = grid_default,
+  method = "xgbTree",
+  verbose = TRUE
+)
+
+# We predict with the yet untuned xgb model and record the RMSE
+xgb_untuned_pred <- predict(xgb_untuned, newdata = as.matrix(test_set_treated))
+xgb_untuned_rmse <- RMSE(xgb_untuned_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_4_xgb_untuned", RMSE = xgb_untuned_rmse))
+
+model_rmses %>% knitr::kable()
+
+
+# We try a set of different tuning options to improve our xgb model
+
+# We define a function to help us plot the tuning effects
+plot_tunings <- function(model, probs = .90) {
+  ggplot(data = model) +
+    coord_cartesian(ylim = c(quantile(model$results$RMSE, probs = probs), min(model$results$RMSE))) +
+    theme_bw()
+}
+
+
+# 1st set pf tuning parameters for learning rate and maximum tree depth
+
+grid_default <- expand.grid(
+  nrounds = seq(from = 100, to = 1000, 100),
+  max_depth = c(2,3,4,5,6),
+  eta = c(0.05, 0.1, 0.3, 0.6, 1),
+  gamma = 0,
+  colsample_bytree = 1,
+  min_child_weight = 1,
+  subsample = 1
+)
+
+# Train control for caret train() function
+train_control <- caret::trainControl(
+  method = "cv", # We use 3-fold cross-validation
+  number = 3,
+  verboseIter = FALSE, # no training log
+  allowParallel = TRUE
+)
+
+xgb_1st_tuning <- train(
+  x = train_set_treated,
+  y = train_set$SalePrice,
+  trControl = train_control,
+  tuneGrid = grid_default,
+  method = "xgbTree",
+  verbose = TRUE
+)
+
+
+# By plotting the tune settings, we can observe that higher learning rates (0.6 and 1) actually don't improve RMSE
+# at higher number of iterations (trees built).
+# A learning rate of 0.1 appears to perform quite well. The higher learning rate values, while faster, are not a good option here.
+plot_tunings(xgb_1st_tuning)
+
+# We can select the best tuning values from the model like this
+xgb_1st_tuning$bestTune
+
+# We predict with the 1st tuning parameters and record the RMSE
+xgb_1st_tuning_pred <- predict(xgb_1st_tuning, newdata = as.matrix(test_set_treated))
+xgb_1st_tuning_rmse <- RMSE(xgb_1st_tuning_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_5_xgb_1st_tuning", RMSE = xgb_1st_tuning_rmse))
+
+model_rmses %>% knitr::kable()
+
+
+
+# 2nd set of tuning parameters
+
+grid_default <- expand.grid(
+  nrounds = seq(from = 200, to = 1000, 100),
+  max_depth = 2, # We fix max tree depth to 2 from our 1st tuning round
+  eta = 0.1, # We fix learning rate to 0.1 from our 1st tuning round
+  gamma = 0,
+  colsample_bytree = c(0.4, 0.6, 0.8, 1.0), # column sampling
+  min_child_weight = c(1, 2, 3), # We look for optimal minimum child weight
+  subsample = c(0.5, 0.75, 1.0) # subsampling
+)
+
+# Train control for caret train() function
+train_control <- caret::trainControl(
+  method = "cv", # We use 3-fold cross-validation
+  number = 3,
+  verboseIter = FALSE, # no training log
+  allowParallel = TRUE
+)
+
+xgb_2nd_tuning <- train(
+  x = train_set_treated,
+  y = train_set$SalePrice,
+  trControl = train_control,
+  tuneGrid = grid_default,
+  method = "xgbTree",
+  verbose = TRUE
+)
+
+# We plot the 2nd tunings.
+plot_tunings(xgb_2nd_tuning)
+
+# We can select the best tuning values from the model like this
+xgb_2nd_tuning$bestTune
+
+# We predict with the 1st tuning parameters and record the RMSE
+xgb_2nd_tuning_pred <- predict(xgb_2nd_tuning, newdata = as.matrix(test_set_treated))
+xgb_2nd_tuning_rmse <- RMSE(xgb_2nd_tuning_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_6_xgb_2nd_tuning", RMSE = xgb_2nd_tuning_rmse))
+
+model_rmses %>% knitr::kable()
+
+
+
+
+
+
+# 3rd set of tuning parameters
+
+grid_default <- expand.grid(
+  nrounds = seq(from = 100, to = 2000, 100), # We search for the best number of rounds
+  max_depth = 2, # We fix tree depth from 1st tune
+  eta = c(0.01, 0.015, 0.025, 0.05, 0.1), # We optimize learning rate
+  gamma = 0,
+  colsample_bytree = 0.4, # We set column sampling to 0.4 from our 2nd tuning
+  min_child_weight = 1, # We set child weight to 1 from our 2nd tuning
+  subsample = 1 # We set subsampling to 1 from our 2nd tuning
+)
+
+# Train control for caret train() function
+train_control <- caret::trainControl(
+  method = "cv", # We use 3-fold cross-validation
+  number = 3,
+  verboseIter = FALSE, # no training log
+  allowParallel = TRUE
+)
+
+xgb_3rd_tuning <- train(
+  x = train_set_treated,
+  y = train_set$SalePrice,
+  trControl = train_control,
+  tuneGrid = grid_default,
+  method = "xgbTree",
+  verbose = TRUE
+)
+
+# We plot the 3rd tunings.
+plot_tunings(xgb_3rd_tuning)
+
+# We can select the best tuning values from the model like this
+xgb_3rd_tuning$bestTune
+
+# We predict with the 1st tuning parameters and record the RMSE
+xgb_3rd_tuning_pred <- predict(xgb_3rd_tuning, newdata = as.matrix(test_set_treated))
+xgb_3rd_tuning_rmse <- RMSE(xgb_3rd_tuning_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_7_xgb_3rd_tuning", RMSE = xgb_3rd_tuning_rmse))
+
+model_rmses %>% knitr::kable()
+
+# After the 3rd tuning, we arrive at the following optimal parameters
+xgb_3rd_tuning$bestTune
