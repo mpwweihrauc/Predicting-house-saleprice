@@ -68,87 +68,329 @@ train %>%
   ylab("Number of houses")
 
 
-###
-# Feature engineering
-###
-
-# To facilitate feature engineering we temporarily merge train and tet into "dataset"
-test$SalePrice <- 0
-dataset <- rbind(train, test)
-
-# We fix the column encoding, as sometimes "NA" was put for the absence of a feature (e.g. when there is no pool).
-dataset$Alley <- str_replace_na(dataset$Alley, replacement = "NoAccess") # Replace NA in the Alley column with "None"
-
-dataset$PoolQC <- str_replace_na(dataset$PoolQC, replacement = "NoPool") # Replace NA in the PoolQC column with "None"
 
 
-dataset$Fence <- str_replace_na(dataset$Fence, replacement = "NoFence") # Replace NA in the Fence column with "None"
 
 
-dataset$MiscFeature <- str_replace_na(dataset$MiscFeature, replacement = "None") # Replace NA in the MiscFeature column with "None"
 
 
-dataset$FireplaceQu <- str_replace_na(dataset$FireplaceQu, replacement = "NoFireplace") # Replace NA in the FirePlaceQu column with "None"
 
 
-dataset$GarageCond <- str_replace_na(dataset$GarageCond, replacement = "NoGarage") # Replace NA in the GarageCond column with "None"
+#######################################################################
+# Feature engineering, data wrangling and dealing with missing values #
+#######################################################################
 
 
-dataset$GarageQual <- str_replace_na(dataset$GarageQual, replacement = "NoGarage") # Replace NA in the GarageQual column with "None"
+
+# To facilitate feature engineering and data cleaning we temporarily merge train and tet into "dataset"
+test$SalePrice <- 0 # Temporarily add SalePrice column with 0s to test
+dataset <- rbind(train, test) # Merge train and test
+summary(dataset) # There's a lot of NA values in many columns
+
+# We fix the encoding of certain columns, as sometimes "NA" was put for the absence of a feature
+# (e.g. when there is no pool). This information comes from the data description text.
+# We can replace these "fake" NAs with "None"
+dataset$Alley <- str_replace_na(dataset$Alley, replacement = "None") # Replace NA in the Alley column with "None"
+dataset$PoolQC <- str_replace_na(dataset$PoolQC, replacement = "None")
+dataset$Fence <- str_replace_na(dataset$Fence, replacement = "None")
+dataset$MiscFeature <- str_replace_na(dataset$MiscFeature, replacement = "None")
+dataset$FireplaceQu <- str_replace_na(dataset$FireplaceQu, replacement = "None")
+dataset$GarageCond <- str_replace_na(dataset$GarageCond, replacement = "None")
+dataset$GarageQual <- str_replace_na(dataset$GarageQual, replacement = "None")
+dataset$GarageFinish <- str_replace_na(dataset$GarageFinish, replacement = "None")
+dataset$GarageType <- str_replace_na(dataset$GarageType, replacement = "None")
+dataset$BsmtFinType1 <- str_replace_na(dataset$BsmtFinType1, replacement = "None") 
+dataset$BsmtFinType2 <- str_replace_na(dataset$BsmtFinType2, replacement = "None") 
 
 
-dataset$GarageFinish <- str_replace_na(dataset$GarageFinish, replacement = "NoGarage") # Replace NA in the GarageFinish column with "None"
+#####
+#####
+
+# MSSubclass is encoded as an integer, even though the magnitude of the integer is meaningless for the variable.
+# We will change encoding into factor.
+dataset$MSSubClass <- as.factor(dataset$MSSubClass)
 
 
-dataset$GarageType <- str_replace_na(dataset$GarageType, replacement = "NoGarage") # Replace NA in the GarageFinish column with "None"
-
-
-dataset$BsmtFinType1 <- str_replace_na(dataset$BsmtFinType1, replacement = "NoBasement") # Replace NA in the GarageFinish column with "None"
-
-
-dataset$BsmtFinType2 <- str_replace_na(dataset$BsmtFinType2, replacement = "NoBasement") # Replace NA in the GarageFinish column with "None"
-
-###
-# Dealing with the missing values
-###
+#####
+#####
 
 # Dealing with missing values in the MSZoning column, which identifies the general zoning classification
 # of the sale. We plot the zoning classifications to discern any patterns.
+dataset[is.na(dataset$MSZoning), ] # There are four houses with a missing MSZoning value
+
+# RL, or residential low-density is clearly the most common value
 plot(dataset$MSZoning,
      col = "orange",
      xlab = "Zoning Classification",
      ylab = "Count",
      main = "MSZoning classifications")
 
-# Clearly, the most common zoning classification is RL (Residential low density).
-# By imputing "RL" for missing MSZoning values, we have the highest chance to be correct.
-dataset$MSZoning[is.na(dataset$MSZoning)] <- "RL" # We impute "RL", the mode, for missing values in MSZoning
+# Does MSZoning depend on MSSubclass? Below we can see that for MSSubClass of 20,
+# residential low-density is clearly the most common value, while it is less clear for MSSubClass of 30 or 70.
+dataset %>% select(MSSubClass, MSZoning) %>%
+  group_by(MSSubClass, MSZoning) %>%
+  filter(MSSubClass %in% c(20, 30, 70)) %>%
+  count()
+
+# We will impute the most common value, "RL", for the houses
+dataset$MSZoning[is.na(dataset$MSZoning)] <- "RL"# We impute "RL", the mode, for missing values in MSZoning
+
+#####
+#####
+
+# LotArea is encoded as an integer, but is clearly numeric. We change it accordingly.
+dataset$LotArea <- as.numeric(dataset$LotArea)
+
+# Is LotArea significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$LotArea) # We detect a very strong skew > 0.75; probably caused by a few houses with very large LotArea.
+dataset %>%
+  ggplot(aes(LotArea)) +
+  geom_histogram(bins = 30, binwidth = 5000, fill = "orange", color = "black") +
+  ggtitle("Histrogram of LotArea") +
+  theme_bw()
+
+# LotArea appears to be skewed significantly. We apply a log-transformation with log1p().
+# Indeed, LotArea now looks much more normal.
+dataset %>% filter(LotArea != 0) %>%
+  ggplot(aes(log1p(LotArea))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of LotArea") +
+  theme_bw()
+
+# We apply the log-transformation to LotArea.
+dataset$LotArea <- log1p(dataset$LotArea)
+
+#####
+#####
+
+# Alley is encoded as character, but should clearly be a facor variable. We change it accordingly.
+dataset$Alley <- as.factor(dataset$Alley)
+
+#####
+#####
+
+# There are two missing values in Utilities.
+dataset[which(is.na(dataset$Utilities)), ] # Both houses appear pretty typical
+
+dataset %>% select(Utilities) %>% group_by(Utilities) %>% count()
+
+# As there is only a single house with "NoSeWa" and all others have the same value, the Utilities column is not very informative.
+# We will therefore remove Utilities from the dataset.
+dataset[which(dataset$Utilities == "NoSeWa"), ] # THe only house with "NoSeWa" doesn't seem particulary special
+
+dataset <- subset(dataset, select = -Utilities) # We remove the Utilities column from the dataset, as it contains little information
+
+#####
+#####
+
+# OverallQual, OverallCond are ordinal, but encoded as integers. We change them into factor variables
+dataset$OverallCond <- as.factor(dataset$OverallCond)
+dataset$OverallQual <- as.factor(dataset$OverallQual)
+
+#####
+#####
+
+# YearBuilt, YearRemodAdd, GarageYrBlt, MoSold, and YrSold would containt too large a number of levels as factor variables.
+# Instead, we will normalize them to be between 0 and 1.
+# GarageYrBlt contains missing values, most likely because some houses don't have a garage.
+# We will inspect GarageYrBlt.
+
+# GarageYrBuilt has some missing values, are these due to there being no Garage?
+# Indeed, most houses with a missing GarageYrBlt simply have no garage, but zwo houses have a detached Garage.
+dataset[which(is.na(dataset$GarageYrBlt)), ] %>% select(GarageYrBlt, GarageType, YearBuilt)
+
+# We will impute the YearBuilt value for the detached garages with missing GarageYrBlt values.
+# While it is quite possible that the detached garage was built later than the house itself, this is our best bet.
+dataset[which(is.na(dataset$GarageYrBlt)), ] %>% select(Id, GarageYrBlt, GarageType, YearBuilt) %>% filter(GarageType == "Detchd")
+dataset$GarageYrBlt[2127] <- dataset$YearBuilt[2127]
+dataset$GarageYrBlt[2577] <- dataset$YearBuilt[2577]
+
+# We then replace the remaining missing values for houses without any garage with 0 and afterwards scale the variable as described above.
+dataset$GarageYrBlt[which(is.na(dataset$GarageYrBlt))] <- 0 # We impute 0 for the missing garage values
+dataset$GarageYrBlt <- (dataset$GarageYrBlt - min(dataset$GarageYrBlt))/(max(dataset$GarageYrBlt) - min(dataset$GarageYrBlt)) # We normalize GarageYrBuilt to be between 0 and 1
+
+# Furthermore, we scale the other columns mentioned above.
+dataset$YearBuilt <- (dataset$YearBuilt - min(dataset$YearBuilt))/(max(dataset$YearBuilt) - min(dataset$YearBuilt))
+dataset$YearRemodAdd <- (dataset$YearRemodAdd - min(dataset$YearRemodAdd))/(max(dataset$YearRemodAdd) - min(dataset$YearRemodAdd))
+dataset$MoSold <- (dataset$MoSold - min(dataset$MoSold))/(max(dataset$MoSold) - min(dataset$MoSold))
+dataset$YrSold <- (dataset$YrSold - min(dataset$YrSold))/(max(dataset$YrSold) - min(dataset$YrSold))
+
+
+#####
+#####
+
+
+# There is a missing value in Exterior1st and Exterior2nd, is it the same house?
+dataset[which(is.na(dataset$Exterior1st)), ]
+dataset[which(is.na(dataset$Exterior2nd)), ]
+
+# Indeed, the info is missing for the same house. Which exterior material is most common?
+dataset %>% select(Exterior1st) %>% group_by(Exterior1st) %>% tally() # VinylSd is the mode
+dataset %>% select(Exterior2nd) %>% group_by(Exterior2nd) %>% tally() # VinylSd is the mode
+
+# Which exterior materials do similar houses use? We look at several attributes and the year the houses were built.
+dataset %>% select(Exterior1st, Exterior2nd, RoofMatl, HouseStyle, BldgType, YearBuilt) %>%
+  filter(BldgType == "1Fam", HouseStyle == "1Story", RoofMatl == "Tar&Grv") %>%
+  arrange(YearBuilt)
+
+# Similar houses mostly use either Plywood or BrkComm, but it looks like VinylSd was only used at later YearBuilt.
+# Which is the most common exterior material used overall?
+# It looks like Plywood is most common, but Wood sliding might also be possible.
+dataset %>% filter(YearBuilt < 0.7 & YearBuilt > 0.30, BldgType == "1Fam", RoofMatl == "Tar&Grv") %>%
+  select(Exterior1st) %>%
+  group_by(Exterior1st) %>%
+  summarize(count = n())
+
+# There is not a very clear most common value, but both Plywood and Wd Sdng (Wood sliding) might be similar in their contribution to the value of a house.
+# It appears that Plwood might imply a higher average SalePrice compared to Wood sliding.
+dataset %>% filter(Exterior1st %in% c("Plywood", "Wd Sdng"), SalePrice > 0) %>%
+  select(Exterior1st, SalePrice) %>%
+  group_by(Exterior1st) %>%
+  summarize(avg_price = mean(SalePrice))
+
+# This is not an ideal imputation, but based on our observations we will impute Plywood as Exterior1st and 2nd, due to it being most common
+# for similar houses in terms of building tpye, roof material and year built.
+dataset$Exterior1st[which(is.na(dataset$Exterior1st))] <- "Plywood"
+dataset$Exterior2nd[which(is.na(dataset$Exterior2nd))] <- "Plywood"
+
+
+#####
+#####
 
 
 # Dealing with missing values concerning the basement. We take a look at all basement-related columns that have missing values. Is there a pattern?
-Bsmt_missing_vals = c("BsmtCond", "BsmtExposure", "BsmtQual", "BsmtFinType1", "BsmtFinType2")
+Bsmt_missing_vals = c("BsmtCond", "BsmtExposure", "BsmtQual", "BsmtFinType1", "BsmtFinType2", "BsmtFinSF1", "BsmtFinSF2")
 dataset[!complete.cases(dataset[, names(dataset) %in% Bsmt_missing_vals]), names(dataset) %in% names(dataset)[which(grepl("Bsmt", names(dataset)))]]
 
 # All missing values related to basement can be explained by the fact that there either is no basement, or it is yet unfinished.
-# We can impute a "NoBasemet" for BsmtQual, BsmtCond, and BsmtExposure missing values.
+# We can impute a "None" for BsmtQual, BsmtCond, and BsmtExposure missing values.
 
 # We convert to a character, add the NA replacement and change back to factor
 dataset$BsmtQual <- as.character(dataset$BsmtQual)
-dataset$BsmtQual[is.na(dataset$BsmtQual)] <- "NoBasement"
+dataset$BsmtQual[is.na(dataset$BsmtQual)] <- "None"
 dataset$BsmtQual <- as.factor(dataset$BsmtQual)
 
 dataset$BsmtExposure <- as.character(dataset$BsmtExposure)
-dataset$BsmtExposure[is.na(dataset$BsmtExposure)] <- "NoBasement"
+dataset$BsmtExposure[is.na(dataset$BsmtExposure)] <- "None"
 dataset$BsmtExposure <- as.factor(dataset$BsmtExposure)
 
 dataset$BsmtCond <- as.character(dataset$BsmtCond)
-dataset$BsmtCond[is.na(dataset$BsmtCond)] <- "NoBasement"
+dataset$BsmtCond[is.na(dataset$BsmtCond)] <- "None"
 dataset$BsmtCond <- as.factor(dataset$BsmtCond)
 
-# We replace the remaining NAs in BsmtFullBath and BsmtHalfBath with 0 as they have "NoBasement"
+# We replace the remaining NAs in BsmtFullBath and BsmtHalfBath with 0 as they have no basement.
 dataset$BsmtFullBath[is.na(dataset$BsmtFullBath)] <- 0
 dataset$BsmtHalfBath[is.na(dataset$BsmtHalfBath)] <- 0
 
+# We replace the missing Bsmt-values of house 2121 with 0, as this house has no basement
+dataset[2121, ] # This house has no basement
+dataset$BsmtFinSF1[2121] <- 0
+dataset$BsmtFinSF2[2121] <- 0
+dataset$BsmtUnfSF[2121] <- 0
+dataset$TotalBsmtSF[2121] <- 0
+
+# We change the encoding of BsmtFinType1 and type 2 from character to factor
+dataset$BsmtFinType1 <- as.factor(dataset$BsmtFinType1)
+dataset$BsmtFinType2 <- as.factor(dataset$BsmtFinType2)
+
+# We change the encoding of BsmtFinSF1 and SF2, as well as BsmtUnfSF and TotalBsmtSF from integer to numeric
+dataset$BsmtFinSF1 <- as.numeric(dataset$BsmtFinSF1)
+dataset$BsmtFinSF2 <- as.numeric(dataset$BsmtFinSF2)
+dataset$BsmtUnfSF <- as.numeric(dataset$BsmtUnfSF)
+dataset$TotalBsmtSF <- as.numeric(dataset$TotalBsmtSF)
+
+###
+
+# Is BsmtFinSF1 significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$BsmtFinSF1) # We detect a strong skew > 0.75
+dataset %>%
+  ggplot(aes(BsmtFinSF1)) +
+  geom_histogram(bins = 30, binwidth = 200, fill = "orange", color = "black") +
+  ggtitle("Histrogram of BsmtFinSF1") +
+  theme_bw()
+
+# BsmtFinSF1 appears to be skewed significantly. We apply a log-transformation with log1p().
+# Indeed, BsmtFinSF1 now looks much more normal.
+dataset %>% filter(BsmtFinSF1 != 0) %>%
+  ggplot(aes(log1p(BsmtFinSF1))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of BsmtFinSF1") +
+  theme_bw()
+
+# We apply the log-transformation to BsmtFinSF1.
+dataset$BsmtFinSF1 <- log1p(dataset$BsmtFinSF1)
+
+###
+
+# Is BsmtFinSF2 significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$BsmtFinSF2) # We detect a strong skew > 0.75; most houses have very low or 0 values here
+dataset %>% 
+  ggplot(aes(BsmtFinSF2)) +
+  geom_histogram(bins = 30, binwidth = 200, fill = "orange", color = "black") +
+  ggtitle("Histrogram of BsmtFinSF2") +
+  theme_bw()
+
+# BsmtFinSF2 appears to be skewed significantly. We apply a log-transformation with log1p().
+# Indeed, BsmtFinSF2 now looks much more normal.
+dataset %>% filter(BsmtFinSF2 != 0) %>%
+  ggplot(aes(log1p(BsmtFinSF2))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of BsmtFinSF2") +
+  theme_bw()
+
+# We apply the log-transformation to BsmtFinSF2.
+dataset$BsmtFinSF2 <- log1p(dataset$BsmtFinSF2)
+
+###
+
+# Is TotalBsmtSF significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$TotalBsmtSF) # We detect a strong skew > 0.75
+dataset %>% 
+  ggplot(aes(TotalBsmtSF)) +
+  geom_histogram(bins = 30, binwidth = 200, fill = "orange", color = "black") +
+  ggtitle("Histrogram of TotalBsmtSF") +
+  theme_bw()
+
+# TotalBsmtSF appears to be skewed a little. We apply a log-transformation with log1p().
+# Indeed, TotalBsmtSF now looks more normal.
+dataset %>% filter(TotalBsmtSF != 0) %>%
+  ggplot(aes(log1p(TotalBsmtSF))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of TotalBsmtSF") +
+  theme_bw()
+
+# We apply the log-transformation to TotalBsmtSF.
+dataset$TotalBsmtSF <- log1p(dataset$TotalBsmtSF)
+
+###
+
+# Is BsmtUnfSF significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$BsmtUnfSF) # We detect a skew > 0.75
+dataset %>% 
+  ggplot(aes(BsmtUnfSF)) +
+  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
+  ggtitle("Histrogram of BsmtUnfSF") +
+  theme_bw()
+
+# BsmtUnfSF appears to be skewed quite a bit. We apply a log-transformation with log1p().
+# Indeed, BsmtUnfSF now looks more normal.
+dataset %>% filter(BsmtUnfSF != 0) %>%
+  ggplot(aes(log1p(BsmtUnfSF))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of BsmtUnfSF") +
+  theme_bw()
+
+# We apply the log-transformation to BsmtUnfSF.
+dataset$BsmtUnfSF <- log1p(dataset$BsmtUnfSF)
+
+
+#####
+#####
 
 
 # Dealing with missing values in MasVnrType and MasVnrArea. We observe that MasVnrType equal to "None" can still have an area.
@@ -165,6 +407,30 @@ summary(dataset$MasVnrArea[!is.na(dataset$MasVnrArea)]) # Looking at MasVnrArea 
 dataset$MasVnrType[is.na(dataset$MasVnrType)] <- "None"
 dataset$MasVnrArea[is.na(dataset$MasVnrArea)] <- 0
 
+# Is MasVnrArea significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$MasVnrArea) # We detect a strong skew > 0.75
+dataset %>%
+  ggplot(aes(MasVnrArea)) +
+  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
+  ggtitle("Histrogram of MasVnrArea") +
+  theme_bw()
+
+# MasVnrArea appears to be skewed significantly. We apply a log-transformation with log1p().
+# Indeed, MasVnrArea now looks much more normal.
+dataset %>% filter(MasVnrArea != 0) %>%
+  ggplot(aes(log1p(MasVnrArea))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of MasVnrArea") +
+  theme_bw()
+
+# We apply the log-transformation to MasVnrArea.
+dataset$MasVnrArea <- log1p(dataset$MasVnrArea)
+
+
+#####
+#####
+
 
 # There is one missing value in Electrical
 which(is.na(dataset$Electrical))
@@ -180,6 +446,10 @@ plot(dataset[, "Electrical"],
 dataset$Electrical[which(is.na(dataset$Electrical))] <- "SBrkr"
 
 
+#####
+#####
+
+
 # There is one missing value in GarageCars and GarageArea - maybe this comes from the same house which doesn't have a garage?
 garage_NA_ind <- which(is.na(dataset$GarageArea)) # Find the row with the missing GarageArea
 print(dataset[garage_NA_ind, ]) # Look at the entry with the id 2577 and realize that there is "NoGarage" in multiple garage-related columns
@@ -187,6 +457,95 @@ print(dataset[garage_NA_ind, ]) # Look at the entry with the id 2577 and realize
 # We can replace the missing values in GarageCars and GarageArea with 0.
 dataset$GarageCars[garage_NA_ind] <- 0
 dataset$GarageArea[garage_NA_ind] <- 0
+
+# Is GarageArea significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$GarageArea) # We detect a very weak skew < 0.25
+dataset %>%
+  ggplot(aes(GarageArea)) +
+  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
+  ggtitle("Histrogram of GarageArea") +
+  theme_bw()
+
+# As GarageArea has little skew, we leave it untouched
+
+#####
+#####
+
+# Is X1stFlrSF significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$X1stFlrSF) # We detect a strong skew > 0.75
+dataset %>%
+  ggplot(aes(X1stFlrSF)) +
+  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
+  ggtitle("Histrogram of X1stFlrSF") +
+  theme_bw()
+
+# X1stFlrSF appears to be skewed significantly. We apply a log-transformation with log1p().
+# Indeed, X1stFlrSF now looks much more normal.
+dataset %>% filter(X1stFlrSF != 0) %>%
+  ggplot(aes(log1p(X1stFlrSF))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of X1stFlrSF") +
+  theme_bw()
+
+# We apply the log-transformation to X1stFlrSF.
+dataset$X1stFlrSF <- log1p(dataset$X1stFlrSF)
+
+###
+
+# Is X2ndFlrSF significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$X2ndFlrSF) # We detect a strong skew > 0.75
+dataset %>%
+  ggplot(aes(X2ndFlrSF)) +
+  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
+  ggtitle("Histrogram of X2ndFlrSF") +
+  theme_bw()
+
+# X2ndFlrSF appears to be skewed significantly. We apply a log-transformation with log1p().
+# Indeed, X2ndFlrSF now looks much more normal.
+dataset %>% filter(X2ndFlrSF != 0) %>%
+  ggplot(aes(log1p(X2ndFlrSF))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of X2ndFlrSF") +
+  theme_bw()
+
+# We apply the log-transformation to X2ndFlrSF.
+dataset$X2ndFlrSF <- log1p(dataset$X2ndFlrSF)
+
+###
+
+
+#####
+#####
+
+# Is LowQualFinSF significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$LowQualFinSF) # We detect a strong skew > 0.75; but most houses don't have a value above 0 here
+skewness(dataset$LowQualFinSF[dataset$LowQualFinSF > 0]) # If we remove all 0 values, the skew is 0.87
+dataset %>% filter(LowQualFinSF != 0) %>%
+  ggplot(aes(LowQualFinSF)) +
+  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
+  ggtitle("Histrogram of LowQualFinSF") +
+  theme_bw()
+
+# LowQualFinSF appears to be skewed, although only a few houses actually have values above 0. We apply a log-transformation with log1p().
+# Indeed, LowQualFinSF now looks much more normal.
+dataset %>% filter(LowQualFinSF != 0) %>%
+  ggplot(aes(log1p(LowQualFinSF))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of LowQualFinSF") +
+  theme_bw()
+
+# We apply the log-transformation to LowQualFinSF.
+dataset$LowQualFinSF <- log1p(dataset$LowQualFinSF)
+
+###
+
+
+#####
+#####
 
 
 # There is one NA remaining in KitchenQual, but is not immediately evident why it is missing
@@ -202,41 +561,8 @@ plot(dataset$KitchenQual,
 dataset$KitchenQual[which(is.na(dataset$KitchenQual))] <- "TA" # We impute "TA" as in "typical" kitchen quality due to it being most likely
 
 
-
-# There is one value missing in TotalBsmtSF - does this house even have a basement?
-dataset[which(is.na(dataset$TotalBsmtSF)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
-dataset$TotalBsmtSF[which(is.na(dataset$TotalBsmtSF))] <- 0 # This house has no basement and thus 0 total basement square feet area
-
-
-# There is one value missing in BsmtFinSF1 - does this house even have a basement?
-dataset[which(is.na(dataset$BsmtFinSF1)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
-dataset$BsmtFinSF1[which(is.na(dataset$BsmtFinSF1))] <- 0 # This house has no basement and thus 0 total basement square feet area
-
-# There is one value missing in BsmtFinSF2 - does this house even have a basement?
-dataset[which(is.na(dataset$BsmtFinSF2)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
-dataset$BsmtFinSF2[which(is.na(dataset$BsmtFinSF2))] <- 0 # This house has no basement and thus 0 total basement square feet area
-
-# There is one value missing in BsmtUnfSF - does this house even have a basement?
-dataset[which(is.na(dataset$BsmtUnfSF)), ] #We take a look at the entry with the missing value; it doesnt have a Basement, we can impute a 0
-dataset$BsmtUnfSF[which(is.na(dataset$BsmtUnfSF))] <- 0 # This house has no basement and thus 0 total basement square feet area
-
-
-# There is one value missing in Exterior1st and Exterior2nd
-dataset[which(is.na(dataset$Exterior1st)), ] #We take a look at the entry with the missing value; it has typical exterior quality
-dataset %>% select(Exterior1st) %>% group_by(Exterior1st) %>% tally() # VinylSd is the mode
-dataset %>% select(Exterior2nd) %>% group_by(Exterior2nd) %>% tally() # VinylSd is the mode
-
-# We impute the most common type of exterior
-dataset$Exterior1st[which(is.na(dataset$Exterior1st))] <- "VinylSd"
-dataset$Exterior2nd[which(is.na(dataset$Exterior2nd))] <- "VinylSd"
-
-
-# There are two missing values in Utilities
-dataset[which(is.na(dataset$Utilities)), ] # Both houses appear pretty typical, so we will go with the most common value for Utilities: AllPub
-
-dataset %>% select(Utilities) %>% group_by(Utilities) %>% count()
-
-dataset$Utilities[which(is.na(dataset$Utilities))] <- "AllPub"
+#####
+#####
 
 
 # There is a missing value in SaleType
@@ -254,38 +580,314 @@ plot(dataset[, "SaleType"],
 dataset$SaleType[which(is.na(dataset$SaleType))] <- "WD"
 
 
+#####
+#####
+
+
 # There are still two missing values in Functional: Home functionality (Assume typical unless deductions are warranted) (from data description)
 dataset[which(is.na(dataset$Functional)), ] # The OverallCond of one house and the OverallQual of the other are at 1!
 
 # What kind of Functional values do houses with an OverallCond of only 1 and OverallQual 4 have most likely?
-dataset[dataset$OverallCond == 1 & dataset$OverallQual == 4, ]$Functional %>% plot() # There is only one other house like this, with similar YearBuilt
+dataset[dataset$OverallCond == 1 & dataset$OverallQual == 4, ]$Functional %>% plot(col = "orange") # There is only one other house like this, with similar YearBuilt
 
 # As the houses are very similar from various attributes, we will impute a Functional of "Typ" typical
 dataset$Functional[2474] <- "Typ"
 
 # The other house with missing Functional...
-dataset[dataset$OverallCond == 5 & dataset$OverallQual == 1, ]$Functional %>% plot() # There is no house like it
-dataset[dataset$OverallQual == 1, ]$Functional %>% plot() # Low-quality houses tend to be "Maj1", "Mod", or "Typ"
-dataset[dataset$OverallCond == 5, ]$Functional %>% plot() # Houses with average condition tend to be "Typ", typical
+dataset[dataset$OverallCond == 5 & dataset$OverallQual == 1, ]$Functional %>% plot(col = "orange") # There is no house like it
+dataset[dataset$OverallQual == 1, ]$Functional %>% plot(col = "orange") # Low-quality houses tend to be "Maj1", "Mod", or "Typ"
+dataset[dataset$OverallCond == 5, ]$Functional %>% plot(col = "orange") # Houses with average condition tend to be "Typ", typical
 
-dataset$Functional %>% plot() # The mode is "Typ", which we will therefore impute in this case
+dataset$Functional %>% plot(col = "orange") # The mode is "Typ", which we will therefore imputed in this case
 
 dataset$Functional[2217] <- "Typ"
+
+
+#####
+#####
+
+
+# Is GrLivArea significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$GrLivArea) # We detect a strong skew > 0.75
+dataset %>%
+  ggplot(aes(GrLivArea)) +
+  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
+  ggtitle("Histrogram of GrLivArea") +
+  theme_bw()
+
+# GrLivArea appears to be skewed significantly. We apply a log-transformation with log1p().
+# Indeed, GrLivArea now looks much more normal.
+dataset %>% filter(GrLivArea != 0) %>%
+  ggplot(aes(log1p(GrLivArea))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of GrLivArea") +
+  theme_bw()
+
+# We apply the log-transformation to GrLivArea.
+dataset$GrLivArea <- log1p(dataset$GrLivArea)
+
+###
+
+#####
+#####
+
+
+# We change the encoding of FullBath, HalfBath, BedroomAbvGr, KitchenAbvGr, TotRmsAbvGrd, Fireplaces,
+# GarageType, FireplaceQu, GarageFinish, GarageQual, GarageCond, PoolQc, Fence, MiscFeature, MiscVal
+dataset$FullBath <- as.numeric(dataset$FullBath)
+dataset$HalfBath <- as.numeric(dataset$HalfBath)
+dataset$BedroomAbvGr <- as.numeric(dataset$BedroomAbvGr)
+dataset$KitchenAbvGr <- as.numeric(dataset$KitchenAbvGr)
+dataset$TotRmsAbvGrd <- as.numeric(dataset$TotRmsAbvGrd)
+dataset$Fireplaces <- as.numeric(dataset$Fireplaces)
+dataset$MiscVal <- as.numeric(dataset$MiscVal)
+
+dataset$GarageType <- as.factor(dataset$GarageType)
+dataset$FireplaceQu <- as.factor(dataset$FireplaceQu)
+dataset$GarageFinish <- as.factor(dataset$GarageFinish)
+dataset$GarageQual <- as.factor(dataset$GarageQual)
+dataset$GarageCond <- as.factor(dataset$GarageCond)
+dataset$PoolQC <- as.factor(dataset$PoolQC)
+dataset$Fence <- as.factor(dataset$Fence)
+dataset$MiscFeature <- as.factor(dataset$MiscFeature)
+
+
+#####
+#####
+
+
+# Is WoodDeckSF significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$WoodDeckSF) # We detect a strong skew > 0.75
+dataset %>% filter(WoodDeckSF != 0) %>%
+  ggplot(aes(WoodDeckSF)) +
+  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
+  ggtitle("Histrogram of WoodDeckSF") +
+  theme_bw()
+
+# WoodDeckSF appears to be skewed quite a bit. We apply a log-transformation with log1p().
+# Indeed, WoodDeckSF now looks more normal.
+dataset %>% filter(WoodDeckSF != 0) %>%
+  ggplot(aes(log1p(WoodDeckSF))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of WoodDeckSF") +
+  theme_bw()
+
+# We apply the log-transformation to WoodDeckSF.
+dataset$WoodDeckSF <- log1p(dataset$WoodDeckSF)
+
+###
+
+
+#####
+#####
+
+
+# Is OpenPorchSF significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$OpenPorchSF) # We detect a strong skew > 0.75
+dataset %>% filter(OpenPorchSF != 0) %>%
+  ggplot(aes(OpenPorchSF)) +
+  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
+  ggtitle("Histrogram of OpenPorchSF") +
+  theme_bw()
+
+# OpenPorchSF appears to be skewed quite a bit. We apply a log-transformation with log1p().
+# Indeed, OpenPorchSF now looks more normal.
+dataset %>% filter(OpenPorchSF != 0) %>%
+  ggplot(aes(log1p(OpenPorchSF))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of OpenPorchSF") +
+  theme_bw()
+
+# We apply the log-transformation to OpenPorchSF.
+dataset$OpenPorchSF <- log1p(dataset$OpenPorchSF)
+
+
+###
+
+
+#####
+#####
+
+
+# Is EnclosedPorch significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$EnclosedPorch) # We detect a strong skew > 0.75
+dataset %>% filter(EnclosedPorch != 0) %>%
+  ggplot(aes(EnclosedPorch)) +
+  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
+  ggtitle("Histrogram of EnclosedPorch") +
+  theme_bw()
+
+# EnclosedPorch appears to be skewed quite a bit. We apply a log-transformation with log1p().
+# Indeed, EnclosedPorch now looks more normal.
+dataset %>% filter(EnclosedPorch != 0) %>%
+  ggplot(aes(log1p(EnclosedPorch))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of EnclosedPorch") +
+  theme_bw()
+
+# We apply the log-transformation to EnclosedPorch.
+dataset$EnclosedPorch <- log1p(dataset$EnclosedPorch)
+
+
+###
+
+
+#####
+#####
+
+
+# Is X3SsnPorch significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$X3SsnPorch) # We detect a strong skew > 0.75
+dataset %>% filter(X3SsnPorch != 0) %>%
+  ggplot(aes(X3SsnPorch)) +
+  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
+  ggtitle("Histrogram of X3SsnPorch") +
+  theme_bw()
+
+# X3SsnPorch appears to be skewed quite a bit. We apply a log-transformation with log1p().
+# Indeed, X3SsnPorch now looks more normal.
+dataset %>% filter(X3SsnPorch != 0) %>%
+  ggplot(aes(log1p(X3SsnPorch))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of X3SsnPorch") +
+  theme_bw()
+
+# We apply the log-transformation to X3SsnPorch.
+dataset$X3SsnPorch <- log1p(dataset$X3SsnPorch)
+
+###
+
+
+#####
+#####
+
+
+# Is ScreenPorch significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$ScreenPorch) # We detect a strong skew > 0.75
+dataset %>% filter(ScreenPorch != 0) %>%
+  ggplot(aes(ScreenPorch)) +
+  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
+  ggtitle("Histrogram of ScreenPorch") +
+  theme_bw()
+
+# ScreenPorch appears to be skewed quite a bit. We apply a log-transformation with log1p().
+# Indeed, ScreenPorch now looks more normal.
+dataset %>% filter(ScreenPorch != 0) %>%
+  ggplot(aes(log1p(ScreenPorch))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of ScreenPorch") +
+  theme_bw()
+
+# We apply the log-transformation to ScreenPorch.
+dataset$ScreenPorch <- log1p(dataset$ScreenPorch)
+
+###
+
+#####
+#####
+
+
+# Is PoolArea significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$PoolArea) # We detect a strong skew > 0.75
+dataset %>% filter(PoolArea != 0) %>%
+  ggplot(aes(PoolArea)) +
+  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
+  ggtitle("Histrogram of PoolArea") +
+  theme_bw()
+
+# PoolArea appears to be skewed quite a bit. We apply a log-transformation with log1p().
+# Indeed, PoolArea now looks more normal - the effect of this transformation is arguable.
+dataset %>% filter(PoolArea != 0) %>%
+  ggplot(aes(log1p(PoolArea))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of PoolArea") +
+  theme_bw()
+
+# We apply the log-transformation to PoolArea.
+dataset$PoolArea <- log1p(dataset$PoolArea)
+
+
+###
+
+
+#####
+#####
+
+
+# Is MiscVal significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(dataset$MiscVal) # We detect a strong skew > 0.75
+dataset %>% filter(MiscVal != 0) %>%
+  ggplot(aes(MiscVal)) +
+  geom_histogram(bins = 30, binwidth = 500, fill = "orange", color = "black") +
+  ggtitle("Histrogram of MiscVal") +
+  theme_bw()
+
+# MiscVal appears to be skewed quite a bit. We apply a log-transformation with log1p().
+# Indeed, MiscVal now looks more normal.
+dataset %>% filter(MiscVal != 0) %>%
+  ggplot(aes(log1p(MiscVal))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of MiscVal") +
+  theme_bw()
+
+# We apply the log-transformation to MiscVal.
+dataset$MiscVal <- log1p(dataset$MiscVal)
+
+###
+
+
+#####
+#####
+
+# Is LotFrontage significantly skewed?
+# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
+skewness(na.omit(dataset$LotFrontage)) # We detect a strong skew > 0.75
+dataset %>% filter(LotFrontage != "NA") %>%
+  ggplot(aes(LotFrontage)) +
+  geom_histogram(bins = 30, binwidth = 10, fill = "orange", color = "black") +
+  ggtitle("Histrogram of LotFrontage") +
+  theme_bw()
+
+# LotFrontage appears to be skewed quite a bit. We apply a log-transformation with log1p().
+# Indeed, LotFrontage now looks more normal.
+dataset %>% filter(LotFrontage != "NA") %>%
+  ggplot(aes(log1p(LotFrontage))) +
+  geom_histogram(bins = 30, fill = "orange", color = "black") +
+  ggtitle("Histrogram of LotFrontage") +
+  theme_bw()
+
+# We apply the log-transformation to LotFrontage.
+dataset$LotFrontage <- log1p(dataset$LotFrontage)
+
+###
+
+#####
+#####
 
 
 #########################################################################################################
 # Dealing with missing values in LotFrontage, which are the linear feet of street connected to property.
 # LotFrontage might be closely correlated to the LotArea, the lot size in square feet.
 
-# We plot log-transformed LotArea against LotFrontage. Indeed, there seems to be a positive correlation
+# We plot LotArea against LotFrontage. Indeed, there seems to be a positive correlation
 # between LotFrontage and LotArea as shown by the fitted general additive model explaining 
 # LotFrontage as a smooth function of LotArea. NAs are automatically removed from the plot.
 dataset %>%
-  ggplot(aes(x = log(LotArea), y = log(LotFrontage))) +
+  ggplot(aes(x = LotArea, y = LotFrontage)) +
   geom_point() +
   geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
-  ggtitle("Linear feet of street connected to property as a function of the lot size in square feet")
+  ggtitle("Linear feet of street connected to property as a function of the lot size in square feet") +
+  theme_bw()
 
+# We will apply a gradient boosting machine model to predict the missing LotFrontage values.
 # We can assume that other features might also be informative about LotFrontage, so we include
 # them in a gradient boosting machine model below (xgboost package; and vtreat package for data preparation)
 
@@ -318,25 +920,30 @@ str(train_treated)
 str(test_treated)
 
 
+########### Tuning for LotFrontage ###########
 
-
-########### Tuning for LotFrontage
+# We define a function to help us plot the tuning effects
+plot_tunings <- function(model, probs = .90) {
+  ggplot(data = model) +
+    coord_cartesian(ylim = c(quantile(model$results$RMSE, probs = probs), min(model$results$RMSE))) +
+    theme_bw()
+}
 
 # Define a grid of tuning parameters for the caret::train() function
 grid_default <- expand.grid(
-  nrounds = seq(from = 100, to = 1000, 100), # We search for the best number of rounds
-  max_depth = c(2,3,4,5,6), # We optimize tree depth
-  eta = 0.1, # We optimize learning rate
+  nrounds = seq(from = 400, to = 1000, 50), # We search for the best number of rounds
+  max_depth = 3,
+  eta = 0.05,
   gamma = 0,
-  colsample_bytree = c(0.4, 0.75, 1), # We optimize column sampling
-  min_child_weight = 1, 
-  subsample = 1 
+  colsample_bytree = 1, # We don't change column sampling
+  min_child_weight = 1, # We don't change min child weight; the larger the more conservative the algorithm
+  subsample = 1 # We don't change subsampling
 )
 
-# Train control for caret train() function
+# Train control for caret train() function; we use cross-validation to estimate out-of-sample error
 train_control <- caret::trainControl(
-  method = "cv", # We use 3-fold cross-validation
-  number = 3,
+  method = "cv", # We use 5-fold cross-validation
+  number = 5,
   verboseIter = FALSE, # no training log
   allowParallel = TRUE
 )
@@ -344,52 +951,20 @@ train_control <- caret::trainControl(
 # Train the xgboost model for LotFrontage
 xgb_LF_tuned <- train(
   x = train_treated,
-  y = LF_train$LotFrontage,
+  y = LF_train$LotFrontage, # The outcome variable comes from the pre-treated data
   trControl = train_control,
   tuneGrid = grid_default,
   method = "xgbTree",
-  verbose = TRUE
+  verboseIter = TRUE
 )
 
-xgb_LF_tuned$bestTune
+xgb_LF_tuned$bestTune # We take a look at the best tuning values
 
-
-# Based on the best tune values from our first optimization, we set the optimal parameters and use a lower learning rate
-grid_default <- expand.grid(
-  nrounds = seq(from = 100, to = 2000, 100), # We search for the best number of rounds
-  max_depth = 3,
-  eta = 0.01,
-  gamma = 0,
-  colsample_bytree = 0.75,
-  min_child_weight = 1, 
-  subsample = 1 
-)
-
-# Train control for caret train() function
-train_control <- caret::trainControl(
-  method = "cv", # We use 3-fold cross-validation
-  number = 3,
-  verboseIter = FALSE, # no training log
-  allowParallel = TRUE
-)
-
-# Train the xgboost model for LotFrontage
-xgb_LF_tuned_2 <- train(
-  x = train_treated,
-  y = LF_train$LotFrontage,
-  trControl = train_control,
-  tuneGrid = grid_default,
-  method = "xgbTree",
-  verbose = TRUE
-)
-
-
-xgb_LF_tuned_2$bestTune
-
+plot_tunings(xgb_LF_tuned) # We use our defined function to visualize the tuning effects
 
 
 # We predict LotFrontage
-LF_test$LotFrontagePred<- predict(xgb_LF_tuned_2, newdata = as.matrix(test_treated))
+LF_test$LotFrontagePred<- predict(xgb_LF_tuned, newdata = as.matrix(test_treated))
 
 # Missing value imputation with the predicted values for LotFrontage
 dataset$LotFrontage[LF_index] <- LF_test$LotFrontagePred
@@ -399,122 +974,10 @@ summary(dataset)
 # correlation between the two variables.
 # Indeed, the predicted LotFrontage values seem to behave in similar fashion to the actual ones we observed above in the whole dataset
 LF_test %>%
-  ggplot(aes(x = log(LotArea), y = log(LotFrontagePred))) +
+  ggplot(aes(x = LotArea, y = LotFrontagePred)) +
   geom_point() +
   geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
   ggtitle("(Predicted) linear feet of street connected to property as a function of the lot size in square feet")
-
-
-
-
-
-
-
-
-
-# REmove previous approach?
-
-
-
-
-
-
-
-
-
-# We conduct gradient boosting cross-validation; as the outcome variable was removed from the treated data we have to get it from the original data
-cv <- xgb.cv(data = as.matrix(train_treated),  # xgb.cv only takes a matrix of the treated, all-numerical input data
-             label = LF_train$LotFrontage, # Outcome from untreated data
-             nrounds = 100, # We go up to 100 rounds of fitting models on the remaining residuals
-             nfold = 5, # We use 5 folds for cross-validation
-             objective = "reg:linear",
-             eta = 0.3, # The learning rate; Closer to 0 is slower, but less prone to overfitting; Closer to 1 is faster, but more likely to overfit
-             max_depth = 6,
-             early_stopping_rounds = 10,
-             verbose = 0)    # silent
-
-# While the RMSE may continue to decrease on more and more rounds if iteration, the test RMSE usually doesn't.
-# We choose the number of rounds that minimize RMSE for test
-elog <- cv$evaluation_log # Get the evaluation log of the cross-validation so we can find the number of trees to use to minimize RMSE without overfitting the training data
-
-elog %>% 
-  summarize(ntrees.train = which.min(train_rmse_mean),   # find the index of min(train_rmse_mean)
-            ntrees.test  = which.min(test_rmse_mean))   # find the index of min(test_rmse_mean)
-
-# We save the number of trees that minimize test RMSE in ntrees
-ntrees <- elog %>% 
-  summarize(ntrees.train = which.min(train_rmse_mean),
-            ntrees.test  = which.min(test_rmse_mean)) %>%
-  use_series(ntrees.test)
-
-# Next we run the actual modelling process with the information gained by running xgboost cross-validation above
-LotFrontage_model_xgb <- xgboost(data = as.matrix(train_treated), # Treated training data as a matrix
-                          label = LF_train$LotFrontage,  # Column of outcomes from original data
-                          nrounds = ntrees,       # number of trees to build, which we determined via cross-validation
-                          objective = "reg:linear", # objective
-                          eta = 0.3, # The learning rate; Closer to 0 is slower, but less prone to overfitting; Closer to 1 is faster, but more likely to overfit
-                          max_depth = 6,
-                          verbose = 0)  # silent
-
-# Now we can predict LotFrontage in the test set that contains all the missing LotFrontage values
-LF_test$LotFrontagePred <- predict(LotFrontage_model_xgb, newdata = as.matrix(test_treated)) # We predict LotFrontage; newdata has to be a matrix
-LF_test
-
-# We can plot the predicted LotFrontage values against the LotArea values in LF_test to see if we observe the
-# correlation between the two variables.
-# Indeed, the predicted LotFrontage values seem to behave in similar fashion to the actual ones we observed above in the whole dataset
-LF_test %>%
-  ggplot(aes(x = log(LotArea), y = log(LotFrontagePred))) +
-  geom_point() +
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
-  ggtitle("(Predicted) linear feet of street connected to property as a function of the lot size in square feet")
-
-# We use the predicted values for imputation of LotFrontage in our dataset
-dataset$LotFrontage[LF_index] <- LF_test$LotFrontagePred
-summary(dataset)
-
-# The missing values for LotFrontage were imputed with xgboost-predicted values based on `variables` related to it
-
-
-# GarageYrBuilt has some missing values, are these due to there being no Garage?
-dataset[which(is.na(dataset$GarageYrBlt)), ] %>% select(GarageYrBlt, GarageType, YearBuilt)
-
-# Some garages are Detached from home, but most missing values are due to there being no Garage
-# One possible solution to this is scaling GarageYrBuilt so it becomes a value between 0 and 1 and imputing a 0 for
-# all houses without a garage, as well as adding a column "HasGarage" with either 0 or 1.
-dataset[which(is.na(dataset$GarageYrBlt)), ] %>% select(Id, GarageYrBlt, GarageType, YearBuilt) %>% filter(GarageType == "Detchd")
-dataset$GarageYrBlt[2127] <- dataset$YearBuilt[2127]
-dataset$GarageYrBlt[2577] <- dataset$YearBuilt[2577]
-
-# We then replace the remaining missing values for houses without any garage with 0 and afterwards scale the varaible
-dataset$GarageYrBlt[which(is.na(dataset$GarageYrBlt))] <- 0 # We impute 0 for the missing garage values
-dataset$GarageYrBlt <- (dataset$GarageYrBlt - min(dataset$GarageYrBlt))/(max(dataset$GarageYrBlt) - min(dataset$GarageYrBlt)) # We normalize GarageYrBuilt to be between 0 and 1
-
-# We create a new variable "HasGarage" to indicate wheter a garage is present
-
-nogarageindex <- which(dataset$GarageCond == "NoGarage")
-dataset$HasGarage <- dataset$GarageCond
-dataset$HasGarage[nogarageindex] <- 0
-dataset$HasGarage[-nogarageindex] <- 1
-
-
-#########################################################################
-### Variable encoding & Skewness ########################################
-#########################################################################
-# We compute the skewness of all numerical features and identify features with a skewness > 0.75 for train and test.
-# Before we can identify all numerical features, we make sure that no actual factors are encoded as numerics.
-# Additionally, some numeric/integer columns which are actually categorical have to be changed into a factor.
-# We define feature_vector, containing all features to be changed into factors.
-dataset$GarageArea <- as.numeric(dataset$GarageArea) # We fix GarageArea to be a numeric instead of a character variable
-dataset$GarageArea[2577] <- 0 # An NA was introduced due to the prior conversion. This house simply has no garage and therefore 0 GarageArea
-
-feature_vector <- c("MSSubClass", "Alley", "GarageQual","GarageType", "MoSold", "YrSold", "HasGarage",
-                    "BsmtFinType1", "BsmtFinType2", "Electrical", "GarageFinish",
-                    "GarageCond", "Functional", "FireplaceQu", "PoolQC", "Fence", "MiscFeature", "SaleType")
-dataset[, feature_vector] <- map(dataset[, feature_vector], factor) # We use map() from purrr to turn all features above into factors
-
-# We take a look at the structure after the modifications
-str(dataset)
 
 
 
@@ -719,13 +1182,6 @@ model_rmses %>% knitr::kable()
 
 
 # We try a set of different tuning options to improve our xgb model
-
-# We define a function to help us plot the tuning effects
-plot_tunings <- function(model, probs = .90) {
-  ggplot(data = model) +
-    coord_cartesian(ylim = c(quantile(model$results$RMSE, probs = probs), min(model$results$RMSE))) +
-    theme_bw()
-}
 
 
 # 1st set pf tuning parameters for learning rate and maximum tree depth
