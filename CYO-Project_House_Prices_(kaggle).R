@@ -507,15 +507,6 @@ LF_test %>%
   ggtitle("(Predicted) linear feet of street connected to property as a function of the lot size in square feet")
 
 
-############################################################################################################
-### All missing values have been dealt with and we can once again separate `dataset` into train and test ###
-train <- dataset[train$Id, ]                                                                             ###
-test <- dataset[test$Id, -81]   # We remove the temporary SalePrice column again                                                                            ###
-############################################################################################################
-
-
-
-
 
 #######
 # Dealing with variable correlation
@@ -524,12 +515,12 @@ test <- dataset[test$Id, -81]   # We remove the temporary SalePrice column again
 # Certain characteristics such as garage have many different variables within the dataset.
 # Some might be strongly correlated. We will visualize correlations between SalePrice and all numeric variables.
 # This will identify the most important numeric variables that influence SalePrice the most.
+# We have to restrict dataset to the Ids that only occur in train, as test has no SalePrice (or we set it to 0)
 
-numVars_ind <- sapply(train, is.numeric) # Select all numeric variables
-numVars_ind[1] <- FALSE # Remove Id
-train_numVars <- train[, numVars_ind] # Select numeric data
+numVars_ind <- sapply(dataset[train$Id, ], is.numeric) # Select all numeric variables
+dataset_numVars <- dataset[train$Id, ][, numVars_ind] # Select numeric data
  
-cor_numVar <- cor(train_numVars, use = "pairwise.complete.obs") # Correlations of all numeric variables
+cor_numVar <- cor(dataset_numVars, use = "pairwise.complete.obs") # Correlations of all numeric variables
 
 cor_sorted <- as.matrix(sort(cor_numVar[, "SalePrice"], decreasing = TRUE))
 CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x) > 0.4)))
@@ -539,49 +530,233 @@ corrplot.mixed(cor_numVar, tl.col = "black", tl.pos = "lt")
 
 # It looks like GarageCars and GarageArea are highly correlated.
 # We take a look at the correlation between GarageArea and GarageCars, as a bigger garage might contain more cars.
-cor(train$GarageArea, train$GarageCars) # It's almost 0.89!
+cor(dataset[train$Id, ]$GarageArea, dataset[train$Id, ]$GarageCars) # It's almost 0.89!
 
 # As having highly correlated predictors is detrimental for modelling, we choose to keep only one of them.
 # Which one has a higher correlation with SalePrice?
-cor(train$SalePrice, train$GarageArea)
-cor(train$SalePrice, train$GarageCars) # The number of cars is slightly stronger correlated with SalePrice!
-
-# What about other Garage-related variables? For proper comparison, we will encode these categorical variables
-# numerically
-
-train$GarageCond["Ex"]
+cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$GarageArea)
+cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$GarageCars) # The number of cars is slightly stronger correlated with SalePrice!
 
 
-
-as.factor(train$GarageCond)
+###
+# We can remove one of these variables as they are redundant
+dataset <- subset(dataset, select = -GarageArea)
+###
 
 
 
+# What about other Garage-related variables? Plotting quality and condition
+# reveals a clear relationship between the two variables.
+# "TA" GarageQual is basically overlapping with GarageCond "TA", or in other words, a typical/average garage quality is in typtical/average condition.
+
+p_qual <- dataset %>% 
+  ggplot(aes(x = GarageQual)) +
+  geom_bar(color = "black", fill = "orange") +
+  theme_bw()
+
+p_cond <- dataset %>% 
+  ggplot(aes(x = GarageCond)) +
+  geom_bar(color = "black", fill = "orange") +
+  theme_bw()
+
+grid.arrange(p_qual, p_cond, nrow = 1)
+
+###
+# We can remove one of these variables as they are redundant
+dataset <- subset(dataset, select = -GarageCond)
+###
 
 
+
+
+###
+# Total number of bathrooms
+###
+
+# While each bathroom variable individually has little influence on SalePrice, combined they might become a stronger predictor.
+# We will value half baths half as much as full baths
+cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice) # Full bathrooms have the strongest correlation to SalePrice
+cor(dataset[train$Id, ]$HalfBath, dataset[train$Id, ]$SalePrice) # Half baths are much less valued, about half as much
+cor(dataset[train$Id, ]$HalfBath, dataset[train$Id, ]$SalePrice) / cor(dataset$FullBath, dataset$SalePrice) # Half baths are about 0.54
+
+# Basement full and half baths have much weaker correlation to SalePrice
+cor(dataset[train$Id, ]$BsmtFullBath, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtFullBath, dataset[train$Id, ]$SalePrice) / cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice)
+
+cor(dataset[train$Id, ]$BsmtHalfBath, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtHalfBath, dataset[train$Id, ]$SalePrice) / cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice)
+
+# We will add a variable "TotalBaths", that sums up the various types of baths into one variable, taking into consideration the different correlations to SalePrice for full and half baths
+dataset$TotalBaths <- dataset$FullBath + (dataset$BsmtFullBath * 0.37) + (dataset$HalfBath * 0.54)  + (dataset$BsmtHalfBath * -0.0942805)
+cor(dataset$TotalBaths, dataset$SalePrice) # Correlation of TotalBaths is higher than of just FullBaths
+
+# We can remove the preivous bath variables
+dataset <- subset(dataset, select = -c(FullBath, HalfBath, BsmtFullBath, BsmtHalfBath))
+
+
+###
+# Basement square feet variables
+###
+# What is the correlation between TotalBsmtSF and the individual measurements of basement square feet?
+cor(dataset$TotalBsmtSF, (dataset$BsmtFinSF1 + dataset$BsmtFinSF2 + dataset$BsmtUnfSF)) # It is exactly 1.
+
+# Correlation between the variables and SalePrice: They are all mostly weak individually., while TotalBsmtSF is highly correlated.
+cor(dataset[train$Id, ]$TotalBsmtSF, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtFinSF1, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtFinSF2, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtUnfSF, dataset[train$Id, ]$SalePrice)
+
+# We remove these unnecessary values, as they are all contained within TotalBsmtSF
+dataset <- subset(dataset, select = -c(BsmtFinSF1, BsmtFinSF2, BsmtUnfSF))
+
+###
+# Are BsmtQual and Cond redundant?
+###
+p_qual <- dataset %>% 
+  ggplot(aes(x = BsmtQual)) +
+  geom_bar(color = "black", fill = "orange") +
+  theme_bw()
+
+p_cond <- dataset %>% 
+  ggplot(aes(x = BsmtCond)) +
+  geom_bar(color = "black", fill = "orange") +
+  theme_bw()
+
+grid.arrange(p_qual, p_cond, nrow = 1)
+
+# BsmtCond is almost always typical "TA". We can remove BsmtCond as it provides little predictive information.
+dataset <- subset(dataset, select = -BsmtCond)
+
+
+#####
+#####
+
+
+###
+# Consolidating the various porch variables
+###
+
+# The various porch variables mutually exclude eachother / shouldn't be overlapping, so we can create a stronger consolidated variable out of them.
+
+# Individual correlation with SalePrice
+cor(dataset[train$Id, ]$OpenPorchSF, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$X3SsnPorch, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$OpenPorchSF, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$ScreenPorch, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$EnclosedPorch, dataset[train$Id, ]$SalePrice)
+
+dataset$TotPorchSF <- (dataset$OpenPorchSF + dataset$EnclosedPorch + dataset$X3SsnPorch + dataset$OpenPorchSF + dataset$ScreenPorch)
+
+# We remove teh individual variables from dataset
+cor(dataset[train$Id, ]$TotPorchSF, dataset[train$Id, ]$SalePrice) # We use all rows from train (as they containt SalePrice)
+
+dataset <- subset(dataset, select = -c(OpenPorchSF, EnclosedPorch, X3SsnPorch, OpenPorchSF, ScreenPorch))
+
+
+
+###
+# Total square feet of living space
+###
+
+# GrLivArea correlates highly with SalePrice, and so does total basement SF
+cor(dataset[train$Id, ]$GrLivArea, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$TotalBsmtSF, dataset[train$Id, ]$SalePrice)
+
+# Combined total area above and below ground correlates even higher with sales price
+cor(dataset[train$Id, ]$SalePrice, (dataset[train$Id, ]$GrLivArea + dataset[train$Id, ]$TotalBsmtSF))
+
+# We combine the two and plot their relationship
+
+dataset$TotSF <- (dataset$GrLivArea + dataset$TotalBsmtSF)
+
+# A larger TotSF value clearly drives up the SalePrice, but the fitted "gam" model shows that two outlying houses strongly influence
+# the dependency. There are two houses with very large TotSF, but rather low SalePrice.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = TotSF, y = SalePrice)) +
+  geom_point(alpha = 0.25) +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"))
+
+# We investigate these houses.
+dataset[which(dataset$TotSF > 7000 & dataset$SalePrice < 200000 & dataset$SalePrice != 0), ]
+
+# Both of these houses have SaleType "New" and SaleCondition "Partial". The homes were not fully completed
+# during their last assessment. All other parameters would indicate much higher SalePrice, such as existence of a pool and large GarageCars (3).
+
+# As these houses come with such an unusally low saleprice we remove them and re-do the plot.
+
+dataset <- dataset[c(-524, -1299), ]
+
+# After removing the outliers, the correlation between SalePrice and TotSF looks better.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = TotSF, y = SalePrice)) +
+  geom_point(alpha = 0.25) +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"))
+
+# Correlation is now 82%
+cor(dataset$SalePrice[dataset$Id %in% c(1:1460)], dataset$TotSF[dataset$Id %in% c(1:1460)])
+
+# We can remove the previous individual variables
+
+dataset <- subset(dataset, select = c(-GrLivArea, -TotalBsmtSF))
+
+
+###
+# Skewedness of the Outcome variable SalePrice
+###
+
+# Monetary values are often log-normally distributed. How does SalePrice look like?
+# The histogram below indicates a certain skewedness.
+dataset[train$Id, ] %>%
+  ggplot(aes(SalePrice)) +
+  geom_histogram(bins = 30, color = "black", fill = "orange")
+
+# We can check for skewedness with a function. The skew is considerably higher than 0.8.
+# A log-transformation could potentially lead to SalePrice being more normal.
+e1071::skewness(dataset[train$Id, ]$SalePrice) # Determine skew of SalePrice
+
+dataset[train$Id, ] %>%
+  ggplot(aes(log1p(SalePrice))) +
+  geom_histogram(bins = 30, color = "black", fill = "orange")
+
+# We log-transform SalePrice
+dataset$SalePrice <- log1p(dataset$SalePrice)
+
+
+
+
+############################################################################################################
+### All missing values have been dealt with and we can once again separate `dataset` into train and test ###
+train <- dataset[train$Id, ]                                                                             ###
+test <- subset(dataset[test$Id, ], select = -SalePrice)   # We remove the temporary SalePrice column again                         ###                                                        ###
+############################################################################################################
+
+
+
+##################################
 
 ###
 # Modelling approaches
 ###
 
+###################################
 # First we write a loss-function to determine the residual mean squared error, or RMSE of the model.
-# The function calculates the residuals and then takes the root mean square of them.
+# The function calculates the residuals/error and then takes the root mean square of them.
 RMSE <- function(predicted_prices, true_prices) {
-  residuals <- predicted_prices - true_prices
-  sqrt(mean(residuals^2))
+  error <- predicted_prices - true_prices
+  sqrt(mean(error^2))
 }
 
 # Next, we split `train` into separate train_set and test_set for algorithm evaluation purposes (we won't use the real `test` subset for this and treat it as completely new data for final evaluations only)
 # test_set will receive 20% of the data, train_set will receive 80%.
 set.seed(1)
-test_index <- createDataPartition(train$SalePrice, p = 0.2, list = FALSE)
+test_index <- createDataPartition(train$SalePrice, p = 0.3, list = FALSE)
 train_set <- train[-test_index, ]
 temp <- train[test_index, ] # temporary test set
 
 # We make sure there are no entries in test_set that aren't in train_set
 test_set <- temp %>% 
   semi_join(train_set, by = c("YearBuilt", "RoofMatl", "Exterior1st", "Exterior2nd", "Electrical",
-                              "MiscFeature")) # Variables were determined by trial and error with the lm() models below
+                              "MiscFeature", "Heating")) # Variables were determined by trial and error with the lm() models below
 
 # We return the removed entries from test to train
 removed <- anti_join(temp, test_set)
@@ -589,13 +764,6 @@ train_set <- rbind(train_set, removed)
 
 summary(train_set)
 summary(test_set)
-
-# There is not a single house with "NoSeWa" value in "Utilities" in the train_set and only a single in test_set. This predictor will not help in training an algorithm and is now removed.
-train_set <- subset(train_set, select = -Utilities)
-test_set <- subset(test_set, select = -Utilities)
-
-
-
 
 
 # 1. Model 1: Simple linear regression as a baseline.
@@ -613,8 +781,8 @@ model_rmses %>% knitr::kable()
 
 # 2. Model 2: Multivariate linear regression with all predictors.
 # In our second model, we use all available predictors.
-model_2_lm <- lm(SalePrice ~ ., data = train_set[, -1]) # We remove Id and predict with all
-model_2_pred <- predict(model_2_lm, newdata = test_set[, -1])
+model_2_lm <- lm(SalePrice ~ ., data = subset(train_set, select = -Id)) # We remove Id and predict with all
+model_2_pred <- predict(model_2_lm, newdata = subset(test_set, select = -Id))
 model_2_lm_RMSE <- RMSE(model_2_pred, test_set$SalePrice)
 
 model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_2_Multivariate_lm", RMSE = model_2_lm_RMSE))
@@ -633,7 +801,7 @@ summary(model_2_lm)
 
 
 # We select all relevant predictors
-variables <- names(train_set)[c(-1, -80)]
+variables <- names(train_set)
 
 # The vtreat function designTreatmentsZ helps encode all variables numerically via one-hot-encoding
 treatment_plan <- designTreatmentsZ(train_set, variables) # Devise a treatment plan for the variables
