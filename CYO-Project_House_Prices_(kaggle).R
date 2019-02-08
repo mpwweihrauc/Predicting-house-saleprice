@@ -11,6 +11,8 @@ if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.
 if(!require(xgboost)) install.packages("xgboost", repos = "http://cran.us.r-project.org")
 if(!require(magrittr)) install.packages("magrittr", repos = "http://cran.us.r-project.org")
 if(!require(vtreat)) install.packages("vtreat", repos = "http://cran.us.r-project.org")
+if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-project.org")
+if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-project.org")
 
 
 # We import the training and testing data subsets (files from Kaggle)
@@ -44,37 +46,6 @@ summary(train$SalePrice)
 #########################
 # Dataset manipulations #
 #########################
-
-# Are certain features skewed? We visualize SalePrice with a histogram and take note of its skewness.
-# House sale prices are right skewed, as a relatively small number of houses has a much larger than average price.
-# Only a very small number of houses actually costs more than ~400000 dollars.
-train %>%
-  ggplot(aes(x = SalePrice)) +
-  geom_histogram(bins = 30, binwidth = 5000) +
-  scale_x_continuous(breaks = seq(0, 800000, 80000)) +
-  ggtitle("Sale price distribution") +
-  xlab("Sale price in dollars") +
-  ylab("Number of houses")
-
-# What does the distribution look like if we log-transform SalesPrice? Monetary amounts are often
-# lognormally distributed, i.e. the log of the data is normally distributed.
-# Indeed, the log-transformed SalesPrice looks much more normally distributed.
-# Note: log1p(x) computes log(1+x), which enables log-transformation even for 0 values.
-train %>%
-  ggplot(aes(x = log1p(SalePrice))) +
-  geom_histogram(bins = 30) +
-  ggtitle("Sale price distribution") +
-  xlab("Sale price in dollars") +
-  ylab("Number of houses")
-
-
-
-
-
-
-
-
-
 
 #######################################################################
 # Feature engineering, data wrangling and dealing with missing values #
@@ -141,25 +112,6 @@ dataset$MSZoning[is.na(dataset$MSZoning)] <- "RL"# We impute "RL", the mode, for
 # LotArea is encoded as an integer, but is clearly numeric. We change it accordingly.
 dataset$LotArea <- as.numeric(dataset$LotArea)
 
-# Is LotArea significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$LotArea) # We detect a very strong skew > 0.75; probably caused by a few houses with very large LotArea.
-dataset %>%
-  ggplot(aes(LotArea)) +
-  geom_histogram(bins = 30, binwidth = 5000, fill = "orange", color = "black") +
-  ggtitle("Histrogram of LotArea") +
-  theme_bw()
-
-# LotArea appears to be skewed significantly. We apply a log-transformation with log1p().
-# Indeed, LotArea now looks much more normal.
-dataset %>% filter(LotArea != 0) %>%
-  ggplot(aes(log1p(LotArea))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of LotArea") +
-  theme_bw()
-
-# We apply the log-transformation to LotArea.
-dataset$LotArea <- log1p(dataset$LotArea)
 
 #####
 #####
@@ -300,93 +252,12 @@ dataset$BsmtFinSF2 <- as.numeric(dataset$BsmtFinSF2)
 dataset$BsmtUnfSF <- as.numeric(dataset$BsmtUnfSF)
 dataset$TotalBsmtSF <- as.numeric(dataset$TotalBsmtSF)
 
-###
 
-# Is BsmtFinSF1 significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$BsmtFinSF1) # We detect a strong skew > 0.75
-dataset %>%
-  ggplot(aes(BsmtFinSF1)) +
-  geom_histogram(bins = 30, binwidth = 200, fill = "orange", color = "black") +
-  ggtitle("Histrogram of BsmtFinSF1") +
-  theme_bw()
-
-# BsmtFinSF1 appears to be skewed significantly. We apply a log-transformation with log1p().
-# Indeed, BsmtFinSF1 now looks much more normal.
-dataset %>% filter(BsmtFinSF1 != 0) %>%
-  ggplot(aes(log1p(BsmtFinSF1))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of BsmtFinSF1") +
-  theme_bw()
-
-# We apply the log-transformation to BsmtFinSF1.
-dataset$BsmtFinSF1 <- log1p(dataset$BsmtFinSF1)
 
 ###
 
-# Is BsmtFinSF2 significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$BsmtFinSF2) # We detect a strong skew > 0.75; most houses have very low or 0 values here
-dataset %>% 
-  ggplot(aes(BsmtFinSF2)) +
-  geom_histogram(bins = 30, binwidth = 200, fill = "orange", color = "black") +
-  ggtitle("Histrogram of BsmtFinSF2") +
-  theme_bw()
 
-# BsmtFinSF2 appears to be skewed significantly. We apply a log-transformation with log1p().
-# Indeed, BsmtFinSF2 now looks much more normal.
-dataset %>% filter(BsmtFinSF2 != 0) %>%
-  ggplot(aes(log1p(BsmtFinSF2))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of BsmtFinSF2") +
-  theme_bw()
 
-# We apply the log-transformation to BsmtFinSF2.
-dataset$BsmtFinSF2 <- log1p(dataset$BsmtFinSF2)
-
-###
-
-# Is TotalBsmtSF significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$TotalBsmtSF) # We detect a strong skew > 0.75
-dataset %>% 
-  ggplot(aes(TotalBsmtSF)) +
-  geom_histogram(bins = 30, binwidth = 200, fill = "orange", color = "black") +
-  ggtitle("Histrogram of TotalBsmtSF") +
-  theme_bw()
-
-# TotalBsmtSF appears to be skewed a little. We apply a log-transformation with log1p().
-# Indeed, TotalBsmtSF now looks more normal.
-dataset %>% filter(TotalBsmtSF != 0) %>%
-  ggplot(aes(log1p(TotalBsmtSF))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of TotalBsmtSF") +
-  theme_bw()
-
-# We apply the log-transformation to TotalBsmtSF.
-dataset$TotalBsmtSF <- log1p(dataset$TotalBsmtSF)
-
-###
-
-# Is BsmtUnfSF significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$BsmtUnfSF) # We detect a skew > 0.75
-dataset %>% 
-  ggplot(aes(BsmtUnfSF)) +
-  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
-  ggtitle("Histrogram of BsmtUnfSF") +
-  theme_bw()
-
-# BsmtUnfSF appears to be skewed quite a bit. We apply a log-transformation with log1p().
-# Indeed, BsmtUnfSF now looks more normal.
-dataset %>% filter(BsmtUnfSF != 0) %>%
-  ggplot(aes(log1p(BsmtUnfSF))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of BsmtUnfSF") +
-  theme_bw()
-
-# We apply the log-transformation to BsmtUnfSF.
-dataset$BsmtUnfSF <- log1p(dataset$BsmtUnfSF)
 
 
 #####
@@ -406,26 +277,6 @@ summary(dataset$MasVnrArea[!is.na(dataset$MasVnrArea)]) # Looking at MasVnrArea 
 # Since "None" is the most common value of type, we impute "None" for MasVnrType and 0 for the area.
 dataset$MasVnrType[is.na(dataset$MasVnrType)] <- "None"
 dataset$MasVnrArea[is.na(dataset$MasVnrArea)] <- 0
-
-# Is MasVnrArea significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$MasVnrArea) # We detect a strong skew > 0.75
-dataset %>%
-  ggplot(aes(MasVnrArea)) +
-  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
-  ggtitle("Histrogram of MasVnrArea") +
-  theme_bw()
-
-# MasVnrArea appears to be skewed significantly. We apply a log-transformation with log1p().
-# Indeed, MasVnrArea now looks much more normal.
-dataset %>% filter(MasVnrArea != 0) %>%
-  ggplot(aes(log1p(MasVnrArea))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of MasVnrArea") +
-  theme_bw()
-
-# We apply the log-transformation to MasVnrArea.
-dataset$MasVnrArea <- log1p(dataset$MasVnrArea)
 
 
 #####
@@ -458,95 +309,9 @@ print(dataset[garage_NA_ind, ]) # Look at the entry with the id 2577 and realize
 dataset$GarageCars[garage_NA_ind] <- 0
 dataset$GarageArea[garage_NA_ind] <- 0
 
-# Is GarageArea significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$GarageArea) # We detect a very weak skew < 0.25
-dataset %>%
-  ggplot(aes(GarageArea)) +
-  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
-  ggtitle("Histrogram of GarageArea") +
-  theme_bw()
-
-# As GarageArea has little skew, we leave it untouched
 
 #####
 #####
-
-# Is X1stFlrSF significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$X1stFlrSF) # We detect a strong skew > 0.75
-dataset %>%
-  ggplot(aes(X1stFlrSF)) +
-  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
-  ggtitle("Histrogram of X1stFlrSF") +
-  theme_bw()
-
-# X1stFlrSF appears to be skewed significantly. We apply a log-transformation with log1p().
-# Indeed, X1stFlrSF now looks much more normal.
-dataset %>% filter(X1stFlrSF != 0) %>%
-  ggplot(aes(log1p(X1stFlrSF))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of X1stFlrSF") +
-  theme_bw()
-
-# We apply the log-transformation to X1stFlrSF.
-dataset$X1stFlrSF <- log1p(dataset$X1stFlrSF)
-
-###
-
-# Is X2ndFlrSF significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$X2ndFlrSF) # We detect a strong skew > 0.75
-dataset %>%
-  ggplot(aes(X2ndFlrSF)) +
-  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
-  ggtitle("Histrogram of X2ndFlrSF") +
-  theme_bw()
-
-# X2ndFlrSF appears to be skewed significantly. We apply a log-transformation with log1p().
-# Indeed, X2ndFlrSF now looks much more normal.
-dataset %>% filter(X2ndFlrSF != 0) %>%
-  ggplot(aes(log1p(X2ndFlrSF))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of X2ndFlrSF") +
-  theme_bw()
-
-# We apply the log-transformation to X2ndFlrSF.
-dataset$X2ndFlrSF <- log1p(dataset$X2ndFlrSF)
-
-###
-
-
-#####
-#####
-
-# Is LowQualFinSF significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$LowQualFinSF) # We detect a strong skew > 0.75; but most houses don't have a value above 0 here
-skewness(dataset$LowQualFinSF[dataset$LowQualFinSF > 0]) # If we remove all 0 values, the skew is 0.87
-dataset %>% filter(LowQualFinSF != 0) %>%
-  ggplot(aes(LowQualFinSF)) +
-  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
-  ggtitle("Histrogram of LowQualFinSF") +
-  theme_bw()
-
-# LowQualFinSF appears to be skewed, although only a few houses actually have values above 0. We apply a log-transformation with log1p().
-# Indeed, LowQualFinSF now looks much more normal.
-dataset %>% filter(LowQualFinSF != 0) %>%
-  ggplot(aes(log1p(LowQualFinSF))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of LowQualFinSF") +
-  theme_bw()
-
-# We apply the log-transformation to LowQualFinSF.
-dataset$LowQualFinSF <- log1p(dataset$LowQualFinSF)
-
-###
-
-
-#####
-#####
-
 
 # There is one NA remaining in KitchenQual, but is not immediately evident why it is missing
 dataset[which(is.na(dataset$KitchenQual)), ]
@@ -603,29 +368,6 @@ dataset$Functional %>% plot(col = "orange") # The mode is "Typ", which we will t
 dataset$Functional[2217] <- "Typ"
 
 
-#####
-#####
-
-
-# Is GrLivArea significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$GrLivArea) # We detect a strong skew > 0.75
-dataset %>%
-  ggplot(aes(GrLivArea)) +
-  geom_histogram(bins = 30, binwidth = 100, fill = "orange", color = "black") +
-  ggtitle("Histrogram of GrLivArea") +
-  theme_bw()
-
-# GrLivArea appears to be skewed significantly. We apply a log-transformation with log1p().
-# Indeed, GrLivArea now looks much more normal.
-dataset %>% filter(GrLivArea != 0) %>%
-  ggplot(aes(log1p(GrLivArea))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of GrLivArea") +
-  theme_bw()
-
-# We apply the log-transformation to GrLivArea.
-dataset$GrLivArea <- log1p(dataset$GrLivArea)
 
 ###
 
@@ -653,235 +395,20 @@ dataset$Fence <- as.factor(dataset$Fence)
 dataset$MiscFeature <- as.factor(dataset$MiscFeature)
 
 
-#####
-#####
 
 
-# Is WoodDeckSF significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$WoodDeckSF) # We detect a strong skew > 0.75
-dataset %>% filter(WoodDeckSF != 0) %>%
-  ggplot(aes(WoodDeckSF)) +
-  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
-  ggtitle("Histrogram of WoodDeckSF") +
-  theme_bw()
 
-# WoodDeckSF appears to be skewed quite a bit. We apply a log-transformation with log1p().
-# Indeed, WoodDeckSF now looks more normal.
-dataset %>% filter(WoodDeckSF != 0) %>%
-  ggplot(aes(log1p(WoodDeckSF))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of WoodDeckSF") +
-  theme_bw()
-
-# We apply the log-transformation to WoodDeckSF.
-dataset$WoodDeckSF <- log1p(dataset$WoodDeckSF)
-
-###
-
-
-#####
-#####
-
-
-# Is OpenPorchSF significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$OpenPorchSF) # We detect a strong skew > 0.75
-dataset %>% filter(OpenPorchSF != 0) %>%
-  ggplot(aes(OpenPorchSF)) +
-  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
-  ggtitle("Histrogram of OpenPorchSF") +
-  theme_bw()
-
-# OpenPorchSF appears to be skewed quite a bit. We apply a log-transformation with log1p().
-# Indeed, OpenPorchSF now looks more normal.
-dataset %>% filter(OpenPorchSF != 0) %>%
-  ggplot(aes(log1p(OpenPorchSF))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of OpenPorchSF") +
-  theme_bw()
-
-# We apply the log-transformation to OpenPorchSF.
-dataset$OpenPorchSF <- log1p(dataset$OpenPorchSF)
-
-
-###
-
-
-#####
-#####
-
-
-# Is EnclosedPorch significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$EnclosedPorch) # We detect a strong skew > 0.75
-dataset %>% filter(EnclosedPorch != 0) %>%
-  ggplot(aes(EnclosedPorch)) +
-  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
-  ggtitle("Histrogram of EnclosedPorch") +
-  theme_bw()
-
-# EnclosedPorch appears to be skewed quite a bit. We apply a log-transformation with log1p().
-# Indeed, EnclosedPorch now looks more normal.
-dataset %>% filter(EnclosedPorch != 0) %>%
-  ggplot(aes(log1p(EnclosedPorch))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of EnclosedPorch") +
-  theme_bw()
-
-# We apply the log-transformation to EnclosedPorch.
-dataset$EnclosedPorch <- log1p(dataset$EnclosedPorch)
-
-
-###
-
-
-#####
-#####
-
-
-# Is X3SsnPorch significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$X3SsnPorch) # We detect a strong skew > 0.75
-dataset %>% filter(X3SsnPorch != 0) %>%
-  ggplot(aes(X3SsnPorch)) +
-  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
-  ggtitle("Histrogram of X3SsnPorch") +
-  theme_bw()
-
-# X3SsnPorch appears to be skewed quite a bit. We apply a log-transformation with log1p().
-# Indeed, X3SsnPorch now looks more normal.
-dataset %>% filter(X3SsnPorch != 0) %>%
-  ggplot(aes(log1p(X3SsnPorch))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of X3SsnPorch") +
-  theme_bw()
-
-# We apply the log-transformation to X3SsnPorch.
-dataset$X3SsnPorch <- log1p(dataset$X3SsnPorch)
-
-###
-
-
-#####
-#####
-
-
-# Is ScreenPorch significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$ScreenPorch) # We detect a strong skew > 0.75
-dataset %>% filter(ScreenPorch != 0) %>%
-  ggplot(aes(ScreenPorch)) +
-  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
-  ggtitle("Histrogram of ScreenPorch") +
-  theme_bw()
-
-# ScreenPorch appears to be skewed quite a bit. We apply a log-transformation with log1p().
-# Indeed, ScreenPorch now looks more normal.
-dataset %>% filter(ScreenPorch != 0) %>%
-  ggplot(aes(log1p(ScreenPorch))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of ScreenPorch") +
-  theme_bw()
-
-# We apply the log-transformation to ScreenPorch.
-dataset$ScreenPorch <- log1p(dataset$ScreenPorch)
-
-###
-
-#####
-#####
-
-
-# Is PoolArea significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$PoolArea) # We detect a strong skew > 0.75
-dataset %>% filter(PoolArea != 0) %>%
-  ggplot(aes(PoolArea)) +
-  geom_histogram(bins = 30, binwidth = 50, fill = "orange", color = "black") +
-  ggtitle("Histrogram of PoolArea") +
-  theme_bw()
-
-# PoolArea appears to be skewed quite a bit. We apply a log-transformation with log1p().
-# Indeed, PoolArea now looks more normal - the effect of this transformation is arguable.
-dataset %>% filter(PoolArea != 0) %>%
-  ggplot(aes(log1p(PoolArea))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of PoolArea") +
-  theme_bw()
-
-# We apply the log-transformation to PoolArea.
-dataset$PoolArea <- log1p(dataset$PoolArea)
-
-
-###
-
-
-#####
-#####
-
-
-# Is MiscVal significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(dataset$MiscVal) # We detect a strong skew > 0.75
-dataset %>% filter(MiscVal != 0) %>%
-  ggplot(aes(MiscVal)) +
-  geom_histogram(bins = 30, binwidth = 500, fill = "orange", color = "black") +
-  ggtitle("Histrogram of MiscVal") +
-  theme_bw()
-
-# MiscVal appears to be skewed quite a bit. We apply a log-transformation with log1p().
-# Indeed, MiscVal now looks more normal.
-dataset %>% filter(MiscVal != 0) %>%
-  ggplot(aes(log1p(MiscVal))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of MiscVal") +
-  theme_bw()
-
-# We apply the log-transformation to MiscVal.
-dataset$MiscVal <- log1p(dataset$MiscVal)
-
-###
-
-
-#####
-#####
-
-# Is LotFrontage significantly skewed?
-# We can detect skewness with the e1071::skewness() function and plot a histrogram of the variable.
-skewness(na.omit(dataset$LotFrontage)) # We detect a strong skew > 0.75
-dataset %>% filter(LotFrontage != "NA") %>%
-  ggplot(aes(LotFrontage)) +
-  geom_histogram(bins = 30, binwidth = 10, fill = "orange", color = "black") +
-  ggtitle("Histrogram of LotFrontage") +
-  theme_bw()
-
-# LotFrontage appears to be skewed quite a bit. We apply a log-transformation with log1p().
-# Indeed, LotFrontage now looks more normal.
-dataset %>% filter(LotFrontage != "NA") %>%
-  ggplot(aes(log1p(LotFrontage))) +
-  geom_histogram(bins = 30, fill = "orange", color = "black") +
-  ggtitle("Histrogram of LotFrontage") +
-  theme_bw()
-
-# We apply the log-transformation to LotFrontage.
-dataset$LotFrontage <- log1p(dataset$LotFrontage)
-
-###
-
-#####
-#####
 
 
 #########################################################################################################
 # Dealing with missing values in LotFrontage, which are the linear feet of street connected to property.
 # LotFrontage might be closely correlated to the LotArea, the lot size in square feet.
 
-# We plot LotArea against LotFrontage. Indeed, there seems to be a positive correlation
+# We plot log-transformed LotArea against LotFrontage. Indeed, there seems to be a positive correlation
 # between LotFrontage and LotArea as shown by the fitted general additive model explaining 
 # LotFrontage as a smooth function of LotArea. NAs are automatically removed from the plot.
 dataset %>%
-  ggplot(aes(x = LotArea, y = LotFrontage)) +
+  ggplot(aes(x = log(LotArea), y = log(LotFrontage))) +
   geom_point() +
   geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
   ggtitle("Linear feet of street connected to property as a function of the lot size in square feet") +
@@ -974,11 +501,10 @@ summary(dataset)
 # correlation between the two variables.
 # Indeed, the predicted LotFrontage values seem to behave in similar fashion to the actual ones we observed above in the whole dataset
 LF_test %>%
-  ggplot(aes(x = LotArea, y = LotFrontagePred)) +
+  ggplot(aes(x = log(LotArea), y = log(LotFrontagePred))) +
   geom_point() +
   geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
   ggtitle("(Predicted) linear feet of street connected to property as a function of the lot size in square feet")
-
 
 
 ############################################################################################################
@@ -986,6 +512,49 @@ LF_test %>%
 train <- dataset[train$Id, ]                                                                             ###
 test <- dataset[test$Id, -81]   # We remove the temporary SalePrice column again                                                                            ###
 ############################################################################################################
+
+
+
+
+
+#######
+# Dealing with variable correlation
+#######
+
+# Certain characteristics such as garage have many different variables within the dataset.
+# Some might be strongly correlated. We will visualize correlations between SalePrice and all numeric variables.
+# This will identify the most important numeric variables that influence SalePrice the most.
+
+numVars_ind <- sapply(train, is.numeric) # Select all numeric variables
+numVars_ind[1] <- FALSE # Remove Id
+train_numVars <- train[, numVars_ind] # Select numeric data
+ 
+cor_numVar <- cor(train_numVars, use = "pairwise.complete.obs") # Correlations of all numeric variables
+
+cor_sorted <- as.matrix(sort(cor_numVar[, "SalePrice"], decreasing = TRUE))
+CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x) > 0.4)))
+cor_numVar <- cor_numVar[CorHigh, CorHigh]
+
+corrplot.mixed(cor_numVar, tl.col = "black", tl.pos = "lt")
+
+# It looks like GarageCars and GarageArea are highly correlated.
+# We take a look at the correlation between GarageArea and GarageCars, as a bigger garage might contain more cars.
+cor(train$GarageArea, train$GarageCars) # It's almost 0.89!
+
+# As having highly correlated predictors is detrimental for modelling, we choose to keep only one of them.
+# Which one has a higher correlation with SalePrice?
+cor(train$SalePrice, train$GarageArea)
+cor(train$SalePrice, train$GarageCars) # The number of cars is slightly stronger correlated with SalePrice!
+
+# What about other Garage-related variables? For proper comparison, we will encode these categorical variables
+# numerically
+
+train$GarageCond["Ex"]
+
+
+
+as.factor(train$GarageCond)
+
 
 
 
@@ -1025,21 +594,6 @@ summary(test_set)
 train_set <- subset(train_set, select = -Utilities)
 test_set <- subset(test_set, select = -Utilities)
 
-
-
-# Monetary values like SalePrice are often log-normal and can be skewed considerably, we determine whether SalePrice is skewed in our dataset
-train_set %>%
-  ggplot(aes(SalePrice)) +
-  geom_histogram(bins = 30, binwidth = 5000)
-
-# Indeed, SalePrice is right-skewed. We try a log-transformation. SalePrice looks much more normal now.
-train_set %>%
-  ggplot(aes(log1p(SalePrice))) +
-  geom_histogram(bins = 30)
-
-# We log-transform SalePrice.
-train_set$SalePrice <- log1p(train_set$SalePrice)
-test_set$SalePrice <- log1p(test_set$SalePrice)
 
 
 
@@ -1142,7 +696,7 @@ model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_3_xgb_linreg", R
 
 model_rmses %>% knitr::kable()
 
-# The RMSE was worsened compared to  the simple linear regression approach.
+# The RMSE was worsened compared to the simple linear regression approach.
 # But can we do better? We try and tune our xgb model
 
 # Default parameters
@@ -1184,12 +738,12 @@ model_rmses %>% knitr::kable()
 # We try a set of different tuning options to improve our xgb model
 
 
-# 1st set pf tuning parameters for learning rate and maximum tree depth
+# 1st set of tuning parameters for learning rate and maximum tree depth
 
 grid_default <- expand.grid(
   nrounds = seq(from = 100, to = 1000, 100),
-  max_depth = c(2,3,4,5,6),
-  eta = c(0.05, 0.1, 0.3, 0.6, 1),
+  max_depth = c(2,3,4),
+  eta = c(0.05, 0.1, 0.3, 0.6),
   gamma = 0,
   colsample_bytree = 1,
   min_child_weight = 1,
@@ -1199,7 +753,7 @@ grid_default <- expand.grid(
 # Train control for caret train() function
 train_control <- caret::trainControl(
   method = "cv", # We use 3-fold cross-validation
-  number = 3,
+  number = 5,
   verboseIter = FALSE, # no training log
   allowParallel = TRUE
 )
@@ -1216,7 +770,6 @@ xgb_1st_tuning <- train(
 
 # By plotting the tune settings, we can observe that higher learning rates (0.6 and 1) actually don't improve RMSE
 # at higher number of iterations (trees built).
-# A learning rate of 0.1 appears to perform quite well. The higher learning rate values, while faster, are not a good option here.
 plot_tunings(xgb_1st_tuning)
 
 # We can select the best tuning values from the model like this
@@ -1232,22 +785,22 @@ model_rmses %>% knitr::kable()
 
 
 
-# 2nd set of tuning parameters
+# 2nd set of tuning parameters. We will build a larger number of shallower trees at a slower learning rate.
 
 grid_default <- expand.grid(
-  nrounds = seq(from = 200, to = 1000, 100),
-  max_depth = 2, # We fix max tree depth to 2 from our 1st tuning round
+  nrounds = seq(from = 100, to = 1000, 100),
+  max_depth = 3, # We fix max tree depth to 3 from our 1st tuning round
   eta = 0.1, # We fix learning rate to 0.1 from our 1st tuning round
-  gamma = 0,
-  colsample_bytree = c(0.4, 0.6, 0.8, 1.0), # column sampling
-  min_child_weight = c(1, 2, 3), # We look for optimal minimum child weight
-  subsample = c(0.5, 0.75, 1.0) # subsampling
+  gamma = 0.1,
+  colsample_bytree = 1, # column sampling
+  min_child_weight = 1, # We look for optimal minimum child weight
+  subsample = 1 # subsampling
 )
 
 # Train control for caret train() function
 train_control <- caret::trainControl(
   method = "cv", # We use 3-fold cross-validation
-  number = 3,
+  number = 5,
   verboseIter = FALSE, # no training log
   allowParallel = TRUE
 )
@@ -1258,7 +811,8 @@ xgb_2nd_tuning <- train(
   trControl = train_control,
   tuneGrid = grid_default,
   method = "xgbTree",
-  verbose = TRUE
+  verbose = TRUE,
+  objective = "reg:linear"
 )
 
 # We plot the 2nd tunings.
@@ -1274,54 +828,3 @@ xgb_2nd_tuning_rmse <- RMSE(xgb_2nd_tuning_pred, test_set$SalePrice)
 model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_6_xgb_2nd_tuning", RMSE = xgb_2nd_tuning_rmse))
 
 model_rmses %>% knitr::kable()
-
-
-
-
-
-
-# 3rd set of tuning parameters
-
-grid_default <- expand.grid(
-  nrounds = seq(from = 100, to = 2000, 100), # We search for the best number of rounds
-  max_depth = 2, # We fix tree depth from 1st tune
-  eta = c(0.01, 0.015, 0.025, 0.05, 0.1), # We optimize learning rate
-  gamma = 0,
-  colsample_bytree = 0.4, # We set column sampling to 0.4 from our 2nd tuning
-  min_child_weight = 1, # We set child weight to 1 from our 2nd tuning
-  subsample = 1 # We set subsampling to 1 from our 2nd tuning
-)
-
-# Train control for caret train() function
-train_control <- caret::trainControl(
-  method = "cv", # We use 3-fold cross-validation
-  number = 3,
-  verboseIter = FALSE, # no training log
-  allowParallel = TRUE
-)
-
-xgb_3rd_tuning <- train(
-  x = train_set_treated,
-  y = train_set$SalePrice,
-  trControl = train_control,
-  tuneGrid = grid_default,
-  method = "xgbTree",
-  verbose = TRUE
-)
-
-# We plot the 3rd tunings.
-plot_tunings(xgb_3rd_tuning)
-
-# We can select the best tuning values from the model like this
-xgb_3rd_tuning$bestTune
-
-# We predict with the 1st tuning parameters and record the RMSE
-xgb_3rd_tuning_pred <- predict(xgb_3rd_tuning, newdata = as.matrix(test_set_treated))
-xgb_3rd_tuning_rmse <- RMSE(xgb_3rd_tuning_pred, test_set$SalePrice)
-
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_7_xgb_3rd_tuning", RMSE = xgb_3rd_tuning_rmse))
-
-model_rmses %>% knitr::kable()
-
-# After the 3rd tuning, we arrive at the following optimal parameters
-xgb_3rd_tuning$bestTune
