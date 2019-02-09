@@ -122,16 +122,7 @@ dataset$Alley <- as.factor(dataset$Alley)
 #####
 #####
 
-# There are two missing values in Utilities.
-dataset[which(is.na(dataset$Utilities)), ] # Both houses appear pretty typical
 
-dataset %>% select(Utilities) %>% group_by(Utilities) %>% count()
-
-# As there is only a single house with "NoSeWa" and all others have the same value, the Utilities column is not very informative.
-# We will therefore remove Utilities from the dataset.
-dataset[which(dataset$Utilities == "NoSeWa"), ] # THe only house with "NoSeWa" doesn't seem particulary special
-
-dataset <- subset(dataset, select = -Utilities) # We remove the Utilities column from the dataset, as it contains little information
 
 #####
 #####
@@ -143,30 +134,15 @@ dataset$OverallQual <- as.factor(dataset$OverallQual)
 #####
 #####
 
-# YearBuilt, YearRemodAdd, GarageYrBlt, MoSold, and YrSold would containt too large a number of levels as factor variables.
-# Instead, we will normalize them to be between 0 and 1.
-# GarageYrBlt contains missing values, most likely because some houses don't have a garage.
-# We will inspect GarageYrBlt.
 
 # GarageYrBuilt has some missing values, are these due to there being no Garage?
-# Indeed, most houses with a missing GarageYrBlt simply have no garage, but zwo houses have a detached Garage.
+# Indeed, most houses with a missing GarageYrBlt simply have no garage, but two houses have a detached Garage.
 dataset[which(is.na(dataset$GarageYrBlt)), ] %>% select(GarageYrBlt, GarageType, YearBuilt)
 
-# We will impute the YearBuilt value for the detached garages with missing GarageYrBlt values.
-# While it is quite possible that the detached garage was built later than the house itself, this is our best bet.
-dataset[which(is.na(dataset$GarageYrBlt)), ] %>% select(Id, GarageYrBlt, GarageType, YearBuilt) %>% filter(GarageType == "Detchd")
-dataset$GarageYrBlt[2127] <- dataset$YearBuilt[2127]
-dataset$GarageYrBlt[2577] <- dataset$YearBuilt[2577]
-
-# We then replace the remaining missing values for houses without any garage with 0 and afterwards scale the variable as described above.
-dataset$GarageYrBlt[which(is.na(dataset$GarageYrBlt))] <- 0 # We impute 0 for the missing garage values
-dataset$GarageYrBlt <- (dataset$GarageYrBlt - min(dataset$GarageYrBlt))/(max(dataset$GarageYrBlt) - min(dataset$GarageYrBlt)) # We normalize GarageYrBuilt to be between 0 and 1
-
-# Furthermore, we scale the other columns mentioned above.
-dataset$YearBuilt <- (dataset$YearBuilt - min(dataset$YearBuilt))/(max(dataset$YearBuilt) - min(dataset$YearBuilt))
-dataset$YearRemodAdd <- (dataset$YearRemodAdd - min(dataset$YearRemodAdd))/(max(dataset$YearRemodAdd) - min(dataset$YearRemodAdd))
-dataset$MoSold <- (dataset$MoSold - min(dataset$MoSold))/(max(dataset$MoSold) - min(dataset$MoSold))
-dataset$YrSold <- (dataset$YrSold - min(dataset$YrSold))/(max(dataset$YrSold) - min(dataset$YrSold))
+# As there is already a large number of garage-related variables and information about the age of the house itself,
+# it seems best to simply remove GarageYrBlt from the dataset, as imputing YearBuilt for the missing GarageYrBlt might
+# lead to more harm than good.
+# GarageYrBlt will be removed at the end of this section, alongside other variables.
 
 
 #####
@@ -384,20 +360,35 @@ dataset$KitchenAbvGr <- as.numeric(dataset$KitchenAbvGr)
 dataset$TotRmsAbvGrd <- as.numeric(dataset$TotRmsAbvGrd)
 dataset$Fireplaces <- as.numeric(dataset$Fireplaces)
 dataset$MiscVal <- as.numeric(dataset$MiscVal)
+dataset$YearBuilt <- as.numeric(dataset$YearBuilt)
+dataset$MoSold <- as.numeric(dataset$MoSold)
+dataset$YrSold <- as.numeric(dataset$YrSold)
+
 
 dataset$GarageType <- as.factor(dataset$GarageType)
-dataset$FireplaceQu <- as.factor(dataset$FireplaceQu)
 dataset$GarageFinish <- as.factor(dataset$GarageFinish)
-dataset$GarageQual <- as.factor(dataset$GarageQual)
-dataset$GarageCond <- as.factor(dataset$GarageCond)
-dataset$PoolQC <- as.factor(dataset$PoolQC)
 dataset$Fence <- as.factor(dataset$Fence)
 dataset$MiscFeature <- as.factor(dataset$MiscFeature)
 
 
+# We change the categorical encoding of quality variables to numeric
+dataset$ExterQual <- as.numeric(factor(dataset$ExterQual, levels=c("None","Po","Fa", "TA", "Gd", "Ex")))
+dataset$ExterCond <- as.numeric(factor(dataset$ExterCond, levels=c("None","Po","Fa", "TA", "Gd", "Ex")))
+dataset$BsmtQual <- as.numeric(factor(dataset$BsmtQual, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
+dataset$BsmtCond <- as.numeric(factor(dataset$BsmtCond, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
+dataset$BsmtExposure <- as.numeric(factor(dataset$BsmtExposure, levels=c("None","No", "Mn", "Av", "Gd")))
+dataset$BsmtFinType1 <- as.numeric(factor(dataset$BsmtFinType1, levels=c("None","Unf","LwQ","Rec","BLQ","ALQ","GLQ")))
+dataset$BsmtFinType2 <- as.numeric(factor(dataset$BsmtFinType2, levels=c("None","Unf","LwQ","Rec","BLQ","ALQ","GLQ")))
+dataset$HeatingQC <- as.numeric(factor(dataset$HeatingQC, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
+dataset$KitchenQual <- as.numeric(factor(dataset$KitchenQual, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
+dataset$FireplaceQu <- as.numeric(factor(dataset$FireplaceQu, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
+dataset$GarageQual <- as.numeric(factor(dataset$GarageQual, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
+dataset$GarageCond <- as.numeric(factor(dataset$GarageCond, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
+dataset$PoolQC <- as.numeric(factor(dataset$PoolQC, levels=c("None", "Fa", "TA", "Gd", "Ex")))
 
 
-
+#####
+#####
 
 
 #########################################################################################################
@@ -528,20 +519,7 @@ cor_numVar <- cor_numVar[CorHigh, CorHigh]
 
 corrplot.mixed(cor_numVar, tl.col = "black", tl.pos = "lt")
 
-# It looks like GarageCars and GarageArea are highly correlated.
-# We take a look at the correlation between GarageArea and GarageCars, as a bigger garage might contain more cars.
-cor(dataset[train$Id, ]$GarageArea, dataset[train$Id, ]$GarageCars) # It's almost 0.89!
 
-# As having highly correlated predictors is detrimental for modelling, we choose to keep only one of them.
-# Which one has a higher correlation with SalePrice?
-cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$GarageArea)
-cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$GarageCars) # The number of cars is slightly stronger correlated with SalePrice!
-
-
-###
-# We can remove one of these variables as they are redundant
-dataset <- subset(dataset, select = -GarageArea)
-###
 
 
 
@@ -574,130 +552,34 @@ dataset <- subset(dataset, select = -GarageCond)
 ###
 
 # While each bathroom variable individually has little influence on SalePrice, combined they might become a stronger predictor.
-# We will value half baths half as much as full baths
+# We will value different types of bath according to their SalePrice correlation ratio compared to FullBaths.
 cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice) # Full bathrooms have the strongest correlation to SalePrice
 cor(dataset[train$Id, ]$HalfBath, dataset[train$Id, ]$SalePrice) # Half baths are much less valued, about half as much
-cor(dataset[train$Id, ]$HalfBath, dataset[train$Id, ]$SalePrice) / cor(dataset$FullBath, dataset$SalePrice) # Half baths are about 0.54
+(FullToHalfBathRatio <- cor(dataset[train$Id, ]$HalfBath, dataset[train$Id, ]$SalePrice) / cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice)) # We calculate the ratio of the correlations of Full and Half baths to SalePrice to use as a weighting factor below
 
-# Basement full and half baths have much weaker correlation to SalePrice
+# Basement full and especially half baths have weaker correlation with SalePrice
 cor(dataset[train$Id, ]$BsmtFullBath, dataset[train$Id, ]$SalePrice)
-cor(dataset[train$Id, ]$BsmtFullBath, dataset[train$Id, ]$SalePrice) / cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice)
-
 cor(dataset[train$Id, ]$BsmtHalfBath, dataset[train$Id, ]$SalePrice)
-cor(dataset[train$Id, ]$BsmtHalfBath, dataset[train$Id, ]$SalePrice) / cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice)
 
-# We will add a variable "TotalBaths", that sums up the various types of baths into one variable, taking into consideration the different correlations to SalePrice for full and half baths
-dataset$TotalBaths <- dataset$FullBath + (dataset$BsmtFullBath * 0.37) + (dataset$HalfBath * 0.54)  + (dataset$BsmtHalfBath * -0.0942805)
-cor(dataset$TotalBaths, dataset$SalePrice) # Correlation of TotalBaths is higher than of just FullBaths
+# Weighting factor for FullBath to BsmtFullBath. A basement full bath receives a weighting factor of 0.3971685 as calculated below.
+(FullToBsmtFullBathRatio <- cor(dataset[train$Id, ]$BsmtFullBath, dataset[train$Id, ]$SalePrice) / cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice))
 
-# We can remove the preivous bath variables
+# Weighting factor for FullBath to BsmtHalfBath. This actualy returns a negative value! We rather remove basement half baths from the calculations.
+(FullToBsmtHalfBathRatio <- cor(dataset[train$Id, ]$BsmtHalfBath, dataset[train$Id, ]$SalePrice) / cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice))
+
+
+# Only very few houses even have BsmtHalfBaths
+summary(dataset$BsmtHalfBath)
+
+# We will createa variable "TotalBaths", that sums up the various types of baths into one variable, taking into consideration the different correlations to SalePrice for full and half baths.
+# We don't add BsmtHalfBaths, as their correlation with SalePrice is very low/negative.
+dataset$TotalBaths <- dataset$FullBath + (dataset$BsmtFullBath * FullToBsmtFullBathRatio) + (dataset$HalfBath * FullToHalfBathRatio)
+cor(dataset[train$Id, ]$TotalBaths, dataset[train$Id, ]$SalePrice) # Correlation of TotalBaths is higher than of just FullBaths
+
+# The new TotalBaths variable has a correlation of almost 70% with SalePrice.
+
+# We can remove the previous bath variables
 dataset <- subset(dataset, select = -c(FullBath, HalfBath, BsmtFullBath, BsmtHalfBath))
-
-
-###
-# Basement square feet variables
-###
-# What is the correlation between TotalBsmtSF and the individual measurements of basement square feet?
-cor(dataset$TotalBsmtSF, (dataset$BsmtFinSF1 + dataset$BsmtFinSF2 + dataset$BsmtUnfSF)) # It is exactly 1.
-
-# Correlation between the variables and SalePrice: They are all mostly weak individually., while TotalBsmtSF is highly correlated.
-cor(dataset[train$Id, ]$TotalBsmtSF, dataset[train$Id, ]$SalePrice)
-cor(dataset[train$Id, ]$BsmtFinSF1, dataset[train$Id, ]$SalePrice)
-cor(dataset[train$Id, ]$BsmtFinSF2, dataset[train$Id, ]$SalePrice)
-cor(dataset[train$Id, ]$BsmtUnfSF, dataset[train$Id, ]$SalePrice)
-
-# We remove these unnecessary values, as they are all contained within TotalBsmtSF
-dataset <- subset(dataset, select = -c(BsmtFinSF1, BsmtFinSF2, BsmtUnfSF))
-
-###
-# Are BsmtQual and Cond redundant?
-###
-p_qual <- dataset %>% 
-  ggplot(aes(x = BsmtQual)) +
-  geom_bar(color = "black", fill = "orange") +
-  theme_bw()
-
-p_cond <- dataset %>% 
-  ggplot(aes(x = BsmtCond)) +
-  geom_bar(color = "black", fill = "orange") +
-  theme_bw()
-
-grid.arrange(p_qual, p_cond, nrow = 1)
-
-# BsmtCond is almost always typical "TA". We can remove BsmtCond as it provides little predictive information.
-dataset <- subset(dataset, select = -BsmtCond)
-
-
-#####
-#####
-
-
-###
-# Consolidating the various porch variables
-###
-
-# The various porch variables mutually exclude eachother / shouldn't be overlapping, so we can create a stronger consolidated variable out of them.
-
-# Individual correlation with SalePrice
-cor(dataset[train$Id, ]$OpenPorchSF, dataset[train$Id, ]$SalePrice)
-cor(dataset[train$Id, ]$X3SsnPorch, dataset[train$Id, ]$SalePrice)
-cor(dataset[train$Id, ]$OpenPorchSF, dataset[train$Id, ]$SalePrice)
-cor(dataset[train$Id, ]$ScreenPorch, dataset[train$Id, ]$SalePrice)
-cor(dataset[train$Id, ]$EnclosedPorch, dataset[train$Id, ]$SalePrice)
-
-dataset$TotPorchSF <- (dataset$OpenPorchSF + dataset$EnclosedPorch + dataset$X3SsnPorch + dataset$OpenPorchSF + dataset$ScreenPorch)
-
-# We remove teh individual variables from dataset
-cor(dataset[train$Id, ]$TotPorchSF, dataset[train$Id, ]$SalePrice) # We use all rows from train (as they containt SalePrice)
-
-dataset <- subset(dataset, select = -c(OpenPorchSF, EnclosedPorch, X3SsnPorch, OpenPorchSF, ScreenPorch))
-
-
-
-###
-# Total square feet of living space
-###
-
-# GrLivArea correlates highly with SalePrice, and so does total basement SF
-cor(dataset[train$Id, ]$GrLivArea, dataset[train$Id, ]$SalePrice)
-cor(dataset[train$Id, ]$TotalBsmtSF, dataset[train$Id, ]$SalePrice)
-
-# Combined total area above and below ground correlates even higher with sales price
-cor(dataset[train$Id, ]$SalePrice, (dataset[train$Id, ]$GrLivArea + dataset[train$Id, ]$TotalBsmtSF))
-
-# We combine the two and plot their relationship
-
-dataset$TotSF <- (dataset$GrLivArea + dataset$TotalBsmtSF)
-
-# A larger TotSF value clearly drives up the SalePrice, but the fitted "gam" model shows that two outlying houses strongly influence
-# the dependency. There are two houses with very large TotSF, but rather low SalePrice.
-dataset[train$Id, ] %>%
-  ggplot(aes(x = TotSF, y = SalePrice)) +
-  geom_point(alpha = 0.25) +
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"))
-
-# We investigate these houses.
-dataset[which(dataset$TotSF > 7000 & dataset$SalePrice < 200000 & dataset$SalePrice != 0), ]
-
-# Both of these houses have SaleType "New" and SaleCondition "Partial". The homes were not fully completed
-# during their last assessment. All other parameters would indicate much higher SalePrice, such as existence of a pool and large GarageCars (3).
-
-# As these houses come with such an unusally low saleprice we remove them and re-do the plot.
-
-dataset <- dataset[c(-524, -1299), ]
-
-# After removing the outliers, the correlation between SalePrice and TotSF looks better.
-dataset[train$Id, ] %>%
-  ggplot(aes(x = TotSF, y = SalePrice)) +
-  geom_point(alpha = 0.25) +
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"))
-
-# Correlation is now 82%
-cor(dataset$SalePrice[dataset$Id %in% c(1:1460)], dataset$TotSF[dataset$Id %in% c(1:1460)])
-
-# We can remove the previous individual variables
-
-dataset <- subset(dataset, select = c(-GrLivArea, -TotalBsmtSF))
 
 
 ###
@@ -722,9 +604,102 @@ dataset[train$Id, ] %>%
 dataset$SalePrice <- log1p(dataset$SalePrice)
 
 
+#####
+# Removal of redundant/colinear variables
+#####
 
 
-############################################################################################################
+# YearRemodAdd: Remodel date (same as construction date if no remodeling or additions)
+# YearBuilt and YearRemodAdd are nearly identically correlated with SalePrice
+cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$YearBuilt)
+cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$YearRemodAdd)
+
+# We can remove YearRemodAdd
+dataset <- subset(dataset, select = -YearRemodAdd)
+
+
+#####
+#####
+
+
+# We will remove GarageYrBlt as described further above.
+dataset <- subset(dataset, select = -GarageYrBlt)
+
+
+#####
+#####
+
+
+# There are two missing values in Utilities.
+dataset[which(is.na(dataset$Utilities)), ] # Both houses appear pretty typical
+
+dataset %>% select(Utilities) %>% group_by(Utilities) %>% count()
+
+# As there is only a single house with "NoSeWa" and all others have the same value, the Utilities column is not very informative.
+# We will therefore remove Utilities from the dataset.
+dataset[which(dataset$Utilities == "NoSeWa"), ] # THe only house with "NoSeWa" doesn't seem particulary special
+
+dataset <- subset(dataset, select = -Utilities) # We remove the Utilities column from the dataset, as it contains little information
+
+
+#####
+#####
+
+
+###
+# Basement square feet variables
+###
+# What is the correlation between TotalBsmtSF and the individual measurements of basement square feet?
+cor(dataset$TotalBsmtSF, (dataset$BsmtFinSF1 + dataset$BsmtFinSF2 + dataset$BsmtUnfSF)) # It is exactly 1.
+
+# Correlation between the variables and SalePrice: They are all mostly weak individually., while TotalBsmtSF is highly correlated.
+cor(dataset[train$Id, ]$TotalBsmtSF, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtFinSF1, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtFinSF2, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtUnfSF, dataset[train$Id, ]$SalePrice)
+
+# We remove these unnecessary, redundant values, as they are all contained within TotalBsmtSF.
+dataset <- subset(dataset, select = -c(BsmtFinSF1, BsmtFinSF2, BsmtUnfSF))
+
+
+#####
+#####
+
+
+# It looks like GarageCars and GarageArea are highly correlated.
+# We take a look at the correlation between GarageArea and GarageCars, as a bigger garage might contain more cars.
+cor(dataset[train$Id, ]$GarageArea, dataset[train$Id, ]$GarageCars) # It's almost 0.89!
+
+# As having highly correlated predictors is detrimental for modelling, we choose to keep only one of them.
+# Which one has a higher correlation with SalePrice?
+cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$GarageArea)
+cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$GarageCars) # The number of cars is slightly stronger correlated with SalePrice!
+
+
+###
+# We can remove one of these variables as they are redundant
+dataset <- subset(dataset, select = -GarageArea)
+###
+
+
+#####
+#####
+
+
+# The above ground living area is composed of 1StFlrSF, 2ndFlrSF and LowQualFinSF.
+# The correlation is 1.
+cor(dataset$GrLivArea, (dataset$X1stFlrSF + dataset$X2ndFlrSF + dataset$LowQualFinSF))
+
+# We can drop the redundant variables
+dataset <- subset(dataset, select = -c(X1stFlrSF, X2ndFlrSF, LowQualFinSF))
+
+
+#####
+#####
+
+
+
+
 ### All missing values have been dealt with and we can once again separate `dataset` into train and test ###
 train <- dataset[train$Id, ]                                                                             ###
 test <- subset(dataset[test$Id, ], select = -SalePrice)   # We remove the temporary SalePrice column again                         ###                                                        ###
@@ -747,17 +722,16 @@ RMSE <- function(predicted_prices, true_prices) {
 }
 
 # Next, we split `train` into separate train_set and test_set for algorithm evaluation purposes (we won't use the real `test` subset for this and treat it as completely new data for final evaluations only)
-# test_set will receive 20% of the data, train_set will receive 80%.
+# test_set will receive 10% of the data, train_set will receive 90%.
 set.seed(1)
-test_index <- createDataPartition(train$SalePrice, p = 0.3, list = FALSE)
+test_index <- createDataPartition(train$SalePrice, p = 0.1, list = FALSE)
 train_set <- train[-test_index, ]
 temp <- train[test_index, ] # temporary test set
 
 # We make sure there are no entries in test_set that aren't in train_set
-test_set <- temp %>% 
-  semi_join(train_set, by = c("YearBuilt", "RoofMatl", "Exterior1st", "Exterior2nd", "Electrical",
-                              "MiscFeature", "Heating")) # Variables were determined by trial and error with the lm() models below
-
+test_set <- temp %>%
+  semi_join(train_set, by = c("RoofMatl", "Condition1", "OverallQual", "Exterior1st", "Exterior2nd",
+                              "Electrical", "Functional", "MiscFeature")) # Variables were determined by trial and error with the lm() models below
 # We return the removed entries from test to train
 removed <- anti_join(temp, test_set)
 train_set <- rbind(train_set, removed)
@@ -781,8 +755,8 @@ model_rmses %>% knitr::kable()
 
 # 2. Model 2: Multivariate linear regression with all predictors.
 # In our second model, we use all available predictors.
-model_2_lm <- lm(SalePrice ~ ., data = subset(train_set, select = -Id)) # We remove Id and predict with all
-model_2_pred <- predict(model_2_lm, newdata = subset(test_set, select = -Id))
+model_2_lm <- lm(SalePrice ~ ., data = subset(train_set, select = -c(Id))) # We remove Id and predict with all
+model_2_pred <- predict(model_2_lm, newdata = subset(test_set, select = -c(Id)))
 model_2_lm_RMSE <- RMSE(model_2_pred, test_set$SalePrice)
 
 model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_2_Multivariate_lm", RMSE = model_2_lm_RMSE))
@@ -801,7 +775,7 @@ summary(model_2_lm)
 
 
 # We select all relevant predictors
-variables <- names(train_set)
+variables <- names(subset(train_set, select = -c(Id, SalePrice)))
 
 # The vtreat function designTreatmentsZ helps encode all variables numerically via one-hot-encoding
 treatment_plan <- designTreatmentsZ(train_set, variables) # Devise a treatment plan for the variables
@@ -823,8 +797,8 @@ str(test_set_treated)
 
 cv <- xgb.cv(data = as.matrix(train_set_treated),  # xgb.cv only takes a matrix of the treated, all-numerical input data
              label = train_set$SalePrice, # Outcome from untreated data
-             nrounds = 100, # We go up to 100 rounds of fitting models on the remaining residuals
-             nfold = 5, # We use 5 folds for cross-validation
+             nrounds = 200, # We go up to 100 rounds of fitting models on the remaining residuals
+             nfold = 3, # We use 5 folds for cross-validation
              objective = "reg:linear",
              eta = 0.3, # The learning rate; Closer to 0 is slower, but less prone to overfitting; Closer to 1 is faster, but more likely to overfit
              max_depth = 6,
@@ -867,44 +841,6 @@ model_rmses %>% knitr::kable()
 # The RMSE was worsened compared to the simple linear regression approach.
 # But can we do better? We try and tune our xgb model
 
-# Default parameters
-grid_default <- expand.grid(
-  nrounds = 100,
-  max_depth = 6,
-  eta = 0.3,
-  gamma = 0,
-  colsample_bytree = 1,
-  min_child_weight = 1,
-  subsample = 1
-)
-
-# Train control for caret train() function
-train_control <- caret::trainControl(
-  method = "none",
-  verboseIter = FALSE, # no training log
-  allowParallel = TRUE
-)
-
-xgb_untuned <- train(
-  x = train_set_treated,
-  y = train_set$SalePrice,
-  trControl = train_control,
-  tuneGrid = grid_default,
-  method = "xgbTree",
-  verbose = TRUE
-)
-
-# We predict with the yet untuned xgb model and record the RMSE
-xgb_untuned_pred <- predict(xgb_untuned, newdata = as.matrix(test_set_treated))
-xgb_untuned_rmse <- RMSE(xgb_untuned_pred, test_set$SalePrice)
-
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_4_xgb_untuned", RMSE = xgb_untuned_rmse))
-
-model_rmses %>% knitr::kable()
-
-
-# We try a set of different tuning options to improve our xgb model
-
 
 # 1st set of tuning parameters for learning rate and maximum tree depth
 
@@ -912,7 +848,7 @@ grid_default <- expand.grid(
   nrounds = seq(from = 100, to = 1000, 100),
   max_depth = c(2,3,4),
   eta = c(0.05, 0.1, 0.3, 0.6),
-  gamma = 0,
+  gamma = 0.01,
   colsample_bytree = 1,
   min_child_weight = 1,
   subsample = 1
@@ -921,7 +857,7 @@ grid_default <- expand.grid(
 # Train control for caret train() function
 train_control <- caret::trainControl(
   method = "cv", # We use 3-fold cross-validation
-  number = 5,
+  number = 3,
   verboseIter = FALSE, # no training log
   allowParallel = TRUE
 )
@@ -956,10 +892,10 @@ model_rmses %>% knitr::kable()
 # 2nd set of tuning parameters. We will build a larger number of shallower trees at a slower learning rate.
 
 grid_default <- expand.grid(
-  nrounds = seq(from = 100, to = 1000, 100),
-  max_depth = 3, # We fix max tree depth to 3 from our 1st tuning round
-  eta = 0.1, # We fix learning rate to 0.1 from our 1st tuning round
-  gamma = 0.1,
+  nrounds = seq(from = 200, to = 2000, 100),
+  max_depth = 3, # We fix max tree depth to 2 
+  eta = 0.025, # We fix learning rate
+  gamma = 0.01,
   colsample_bytree = 1, # column sampling
   min_child_weight = 1, # We look for optimal minimum child weight
   subsample = 1 # subsampling
@@ -980,7 +916,6 @@ xgb_2nd_tuning <- train(
   tuneGrid = grid_default,
   method = "xgbTree",
   verbose = TRUE,
-  objective = "reg:linear"
 )
 
 # We plot the 2nd tunings.
