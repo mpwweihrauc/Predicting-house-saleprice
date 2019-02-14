@@ -5,7 +5,7 @@
 
 # We begin by loading/installing all required libraries and packages
 if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
-if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org", dependencies = c("Depends", "Suggests"))
 if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
 if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.org")
 if(!require(xgboost)) install.packages("xgboost", repos = "http://cran.us.r-project.org")
@@ -15,7 +15,7 @@ if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-pr
 if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-project.org")
 if(!require(ranger)) install.packages("ranger", repos = "http://cran.us.r-project.org")
 if(!require(glmnet)) install.packages("glmnet", repos = "http://cran.us.r-project.org")
-
+if(!require(vip)) install.packages("vip", repos = "http://cran.us.r-project.org")
 
 # We import the training and testing data subsets (files from Kaggle)
 train <- read.csv("train.csv", stringsAsFactors = TRUE)
@@ -54,11 +54,136 @@ summary(train$SalePrice)
 #######################################################################
 
 
-
-# To facilitate feature engineering and data cleaning we temporarily merge train and tet into "dataset"
+# To facilitate feature engineering and data cleaning we temporarily merge train and tet into "dataset".
 test$SalePrice <- 0 # Temporarily add SalePrice column with 0s to test
 dataset <- rbind(train, test) # Merge train and test
 summary(dataset) # There's a lot of NA values in many columns
+
+# We will now systematically analyse each feature of the dataset.
+# Whenever we work with the SalePrice variable, we will subset "dataset" with the train$Id, as "test" has
+# no entries for it.
+
+#####
+# Feature 1: MSSubClass
+# MSSubClass: Identifies the type of dwelling involved in the sale.
+#####
+
+# There are no missing values in MSSubClass.
+summary(dataset$MSSubClass)
+
+# MSSubClass should be a factor variable.
+dataset$MSSubClass <- as.factor(dataset$MSSubClass)
+
+# Boxplot of MSSubClass vs. SalePrice
+MSSubClass_boxplot <- dataset[train$Id, ] %>%
+  group_by(MSSubClass) %>%
+  ggplot(aes(x = MSSubClass, y = SalePrice, color = MSSubClass)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_boxplot() +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of MSSubClass vs. SalePrice")
+
+# Scatterplot of MSSubClass vs. SalePrice
+MSSubClass_scatterplot <- dataset[train$Id, ] %>%
+  group_by(MSSubClass) %>%
+  ggplot(aes(x = MSSubClass, y = SalePrice, color = MSSubClass)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of MSSubClass vs. SalePrice")
+
+grid.arrange(MSSubClass_boxplot, MSSubClass_scatterplot, nrow = 1)
+
+# From the boxplot we can notice that some of the most expensive houses are from the "20", "50", and "60" category of MSSubClass.
+# "20" are "1-STORY 1946 & NEWER ALL STYLES", "50" are "1-1/2 STORY FINISHED ALL AGES", and "60" are "2-STORY 1946 & NEWER".
+# From the scatterplot we can see that only a few houses are in MSSubClass "40" and "180".
+
+#####
+# Feature 2: MSZoning
+# MSZoning: Identifies the general zoning classification of the sale.
+#####
+
+# There are some missing values in MSZoning.
+summary(dataset$MSZoning)
+
+# Boxplot of MSZoning vs. SalePrice.
+MSZoning_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MSZoning, y = SalePrice, color = MSZoning)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of MSZoning vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# Boxplot of MSZoning vs. SalePrice.
+MSZoning_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MSZoning, y = SalePrice, color = MSZoning)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("Boxplot of MSZoning vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+grid.arrange(MSZoning_boxplot, MSZoning_scatterplot, nrow = 1)
+
+# From the plots we can see that the most expensive houses belong to the "RL" category,
+# while "C (all)" contains less valuable houses.
+# Residential low ("RL") and medium ("RM") density can be predictive of a higher sale price,
+# although floating village residential ("FL") has an even higher median sale price.
+
+# Dealing with missing values in the MSZoning column.
+# From the plot below we can see that "RL", or residential low-density is clearly the most common value.
+dataset %>%
+  ggplot(aes(x = MSZoning, fill = MSZoning)) +
+  geom_histogram(stat = "count") +
+  ggtitle("MSZoning classifications") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  xlab("Number of houses")
+
+# Does MSZoning depend on MSSubclass? Below we can see that for MSSubClass of 20,
+# residential low-density is clearly the most common value, while it is less clear for MSSubClass of 30 or 70.
+dataset %>% select(MSSubClass, MSZoning) %>%
+  group_by(MSSubClass, MSZoning) %>%
+  filter(MSSubClass %in% c(20, 30, 70)) %>%
+  count()
+
+# We will impute the most common value, "RL", for the houses with missing values in MSZoning.
+dataset$MSZoning[is.na(dataset$MSZoning)] <- "RL"
+
+
+
+
+
+
+
+# Feature 3: LotFrontage
+# Feature 4: LotArea
+# Feature 5: Street
+# Feature 6: Alley
+# Feature 7: LotShape
+# Feature 8: LandContour
+# Feature 9: Utilities
+# Feature 10: LotConfig
+# Feature 11: LandSlope
+# Feature 12: Neighbourhood
+# Feature 13: Condition1
+# Feature 14: Condition2
+# Feature 15: BldgType
+# Feature 16: HouseStyle
+# Feature 17: OverallQual
+# Feature 18: OverallCond
+# Feature 19: YearBuilt
+# Feature 20: YearRemodAdd
+# Feature 21: RoofStyle
+# Feature 22: RoofMatl
+# Feature 23: Exterior1st
+# Feature 24: Exterior2nd
+# Feature 25: MasVnrType
+# Feature 26: MasVnrArea
+
 
 # We fix the encoding of certain columns, as sometimes "NA" was put for the absence of a feature
 # (e.g. when there is no pool). This information comes from the data description text.
@@ -123,19 +248,6 @@ dataset$Alley <- as.factor(dataset$Alley)
 
 #####
 #####
-
-
-
-#####
-#####
-
-# OverallQual, OverallCond are ordinal, but encoded as integers. We change them into factor variables
-dataset$OverallCond <- as.factor(dataset$OverallCond)
-dataset$OverallQual <- as.factor(dataset$OverallQual)
-
-#####
-#####
-
 
 # GarageYrBuilt has some missing values, are these due to there being no Garage?
 # Indeed, most houses with a missing GarageYrBlt simply have no garage, but two houses have a detached Garage.
@@ -202,7 +314,7 @@ dataset$BsmtQual[is.na(dataset$BsmtQual)] <- "None"
 dataset$BsmtQual <- as.factor(dataset$BsmtQual)
 
 dataset$BsmtExposure <- as.character(dataset$BsmtExposure)
-dataset$BsmtExposure[is.na(dataset$BsmtExposure)] <- "None"
+dataset$BsmtExposure[is.na(dataset$BsmtExposure)] <- "No"
 dataset$BsmtExposure <- as.factor(dataset$BsmtExposure)
 
 dataset$BsmtCond <- as.character(dataset$BsmtCond)
@@ -378,9 +490,7 @@ dataset$ExterQual <- as.numeric(factor(dataset$ExterQual, levels=c("None","Po","
 dataset$ExterCond <- as.numeric(factor(dataset$ExterCond, levels=c("None","Po","Fa", "TA", "Gd", "Ex")))
 dataset$BsmtQual <- as.numeric(factor(dataset$BsmtQual, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
 dataset$BsmtCond <- as.numeric(factor(dataset$BsmtCond, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
-dataset$BsmtExposure <- as.numeric(factor(dataset$BsmtExposure, levels=c("None","No", "Mn", "Av", "Gd")))
-dataset$BsmtFinType1 <- as.numeric(factor(dataset$BsmtFinType1, levels=c("None","Unf","LwQ","Rec","BLQ","ALQ","GLQ")))
-dataset$BsmtFinType2 <- as.numeric(factor(dataset$BsmtFinType2, levels=c("None","Unf","LwQ","Rec","BLQ","ALQ","GLQ")))
+dataset$BsmtExposure <- as.numeric(factor(dataset$BsmtExposure, levels=c("No", "Mn", "Av", "Gd")))
 dataset$HeatingQC <- as.numeric(factor(dataset$HeatingQC, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
 dataset$KitchenQual <- as.numeric(factor(dataset$KitchenQual, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
 dataset$FireplaceQu <- as.numeric(factor(dataset$FireplaceQu, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
@@ -388,6 +498,8 @@ dataset$GarageQual <- as.numeric(factor(dataset$GarageQual, levels=c("None","Po"
 dataset$GarageCond <- as.numeric(factor(dataset$GarageCond, levels=c("None","Po", "Fa", "TA", "Gd", "Ex")))
 dataset$PoolQC <- as.numeric(factor(dataset$PoolQC, levels=c("None", "Fa", "TA", "Gd", "Ex")))
 
+dataset$OverallCond <- as.numeric(dataset$OverallCond)
+dataset$OverallQual <- as.numeric(dataset$OverallQual)
 
 #####
 #####
@@ -442,29 +554,24 @@ str(test_treated)
 
 ########### Tuning for LotFrontage ###########
 
-# We define a function to help us plot the tuning effects
-plot_tunings <- function(model, probs = .90) {
-  ggplot(data = model) +
-    coord_cartesian(ylim = c(quantile(model$results$RMSE, probs = probs), min(model$results$RMSE))) +
-    theme_bw()
-}
-
 # Define a grid of tuning parameters for the caret::train() function
+# We select some empirically optimized parameters
 grid_default <- expand.grid(
-  nrounds = seq(from = 400, to = 1000, 50), # We search for the best number of rounds
-  max_depth = 3,
+  nrounds = seq(from = 100, to = 800, 50), 
+  max_depth = 4,
   eta = 0.05,
   gamma = 0,
-  colsample_bytree = 1, # We don't change column sampling
-  min_child_weight = 1, # We don't change min child weight; the larger the more conservative the algorithm
-  subsample = 1 # We don't change subsampling
+  colsample_bytree = 0.75, 
+  min_child_weight = 1, 
+  subsample = 1 
 )
 
 # Train control for caret train() function; we use cross-validation to estimate out-of-sample error
 train_control <- caret::trainControl(
-  method = "cv", # We use 5-fold cross-validation
-  number = 5,
-  verboseIter = FALSE, # no training log
+  method = "repeatedcv", # We use 5-fold cross-validation
+  number = 3,
+  repeats = 3,
+  verboseIter = TRUE,
   allowParallel = TRUE
 )
 
@@ -480,7 +587,7 @@ xgb_LF_tuned <- train(
 
 xgb_LF_tuned$bestTune # We take a look at the best tuning values
 
-plot_tunings(xgb_LF_tuned) # We use our defined function to visualize the tuning effects
+ggplot(xgb_LF_tuned) # We use our defined function to visualize the tuning effects
 
 
 # We predict LotFrontage
@@ -700,6 +807,76 @@ dataset <- subset(dataset, select = -c(X1stFlrSF, X2ndFlrSF, LowQualFinSF))
 #####
 
 
+# There are 4 separate features describing porches: Open, enclosed, 3-season, and screened.
+# We look at the individual correlation with SalePrice and build a combined feature "TotalPorch".
+cor(dataset[train$Id, ]$OpenPorchSF, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$EnclosedPorch, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$X3SsnPorch, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$ScreenPorch, dataset[train$Id, ]$SalePrice)
+
+dataset$TotalPorch <- as.numeric(dataset$OpenPorchSF + dataset$EnclosedPorch + dataset$X3SsnPorch + dataset$ScreenPorch)
+
+cor(dataset[train$Id, ]$TotalPorch, dataset[train$Id, ]$SalePrice)
+
+# We remove the individual features
+
+dataset <- subset(dataset, select = -c(OpenPorchSF, EnclosedPorch, X3SsnPorch, ScreenPorch))
+
+
+
+
+
+# We plot MonthSold and YearSold - do these features influence SalePrice?
+
+# We plot the amount of sold houses per month. Most houses are sold during the Spring/Summer months of the year.
+dataset %>%
+  group_by(MoSold) %>%
+  count() %>%
+  ggplot(aes(x = MoSold, y = n)) +
+  geom_line(col = "blue") +
+  ylab("Number of houses sold") +
+  xlab("Month") +
+  scale_x_continuous(breaks = seq(1,12,1)) +
+  geom_vline(xintercept = 3, col = "red", linetype = "dashed") +
+  geom_vline(xintercept = 9, col = "red", linetype = "dashed")
+
+# Does this influence SalePrice? MoSold doesn't seem to influence SalePrice at all. There are simply more houses being sold in the summer months.
+dataset[train$Id, ] %>%
+  group_by(MoSold) %>%
+  ggplot(aes(x = MoSold, y = exp(SalePrice), group = MoSold)) +
+  geom_boxplot() +
+  ylab("Sale price") +
+  xlab("Month") +
+  scale_x_continuous(breaks = seq(1,12,1)) +
+  ggtitle("Distribution of SalePrice over MoSold") +
+
+
+  # We plot the amount of sold houses per year. The amount is relatively similar, but much less entries in 2010.
+  dataset %>%
+  group_by(YrSold) %>%
+  count() %>%
+  ggplot(aes(x = YrSold, y = n)) +
+  geom_line(col = "blue") +
+  ylab("Number of houses sold") +
+  xlab("Year") +
+
+
+# YrSold doesn't seem to influence SalePrice at all.
+dataset[train$Id, ] %>%
+  group_by(YrSold) %>%
+  ggplot(aes(x = YrSold, y = exp(SalePrice), group = YrSold)) +
+  geom_boxplot() +
+  ylab("Sale price") +
+  xlab("Year") +
+  ggtitle("Distribution of SalePrice over YrSold")
+  
+  
+# As MoSold and YrSold have no predictive power over SalePrice, we drop them.
+dataset <- subset(dataset, select = -c(MoSold, YrSold))
+  
+#####
+#####
+  
 
 
 ### All missing values have been dealt with and we can once again separate `dataset` into train and test ###
@@ -726,15 +903,15 @@ RMSE <- function(predicted_prices, true_prices) {
 # Next, we split `train` into separate train_set and test_set for algorithm evaluation purposes (we won't use the real `test` subset for this and treat it as completely new data for final evaluations only)
 # test_set will receive 20% of the data, train_set will receive 80%.
 # The test_set will serve as a "hold-out" set to check algorithm performance.
-set.seed(1)
+set.seed(1442)
 test_index <- createDataPartition(train$SalePrice, p = 0.2, list = FALSE)
 train_set <- train[-test_index, ]
 temp <- train[test_index, ] # temporary test set
 
 # We make sure there are no entries in test_set that aren't in train_set
 test_set <- temp %>%
-  semi_join(train_set, by = c("RoofMatl", "Condition1", "OverallQual", "Exterior1st", "Exterior2nd",
-                              "Electrical", "Functional", "MiscFeature")) # Variables were determined by trial and error with the lm() models below
+  semi_join(train_set, by = c("RoofMatl", "Exterior1st", "Exterior2nd", "Electrical", "Functional",
+                              "MiscFeature", "Condition2")) # Variables were determined by trial and error with the lm() models below
 # We return the removed entries from test to train
 removed <- anti_join(temp, test_set)
 train_set <- rbind(train_set, removed)
@@ -747,7 +924,7 @@ summary(test_set)
 # As our first, very simple model we predict house sale price via linear regression of the LotArea.
 # We generate a table to keep track of the RMSEs our various models generate.
 
-model_1_lm <- lm(SalePrice ~ LotArea, data = train_set) # Linear regression with a single predictor
+model_1_lm <- lm(SalePrice ~ OverallQual, data = train_set) # Linear regression with a single predictor
 model_1_pred <- predict(model_1_lm, newdata = test_set) # Predict on test_set
 
 model_1_lm_RMSE <- RMSE(model_1_pred, test_set$SalePrice) # Calculate RMSE
@@ -772,15 +949,6 @@ model_rmses %>% knitr::kable()
 
 # We examine the multivariate lm model 2. It seems that most predictors are not significant as per p-value.
 summary(model_2_lm)
-
-
-
-
-
-
-
-
-
 
 
 
@@ -867,29 +1035,13 @@ model_rmses %>% knitr::kable()
 #####
 
 
-# We select all relevant predictors
-variables <- names(subset(train, select = -c(Id, SalePrice)))
-
-# The vtreat function designTreatmentsZ helps encode all variables numerically via one-hot-encoding
-treatment_plan <- designTreatmentsZ(train, variables) # Devise a treatment plan for the variables
-(newvars <- treatment_plan %>%
-    use_series(scoreFrame) %>%  # use_series() works like a $, but within pipes, so we can access scoreFrame      
-    filter(code %in% c("clean", "lev")) %>%  # We select only the rows we care about: catP is a "prevalence fact" and tells whether the original level was rare or common and not really useful in the model
-    use_series(varName))           # We get the varName column
-
-# The prepare() function prepares our data subsets according to the treatment plan
-# we devised above and encodes all relevant variables "newvars" numerically
-train_treated <- prepare(treatment_plan, train,  varRestriction = newvars)
-test_treated <- prepare(treatment_plan, test,  varRestriction = newvars)
-
-
 # We test different values for maximum tree depth and learning rate. 
 # Learning rate can easily become too high, while too deep trees can make the model too complex and overfit.
 # We keep the other parameters at their default for now.
 tuneGrid <- expand.grid(
-  nrounds = seq(100, 500, 50),
-  max_depth = c(2, 3, 4),
-  eta = c(0.025, 0.05, 0.1),
+  nrounds = seq(200, 1000, 100),
+  max_depth = c(2, 3, 4, 8),
+  eta = 0.05,
   gamma = 0,
   colsample_bytree = 1,
   min_child_weight = 1,
@@ -899,14 +1051,14 @@ tuneGrid <- expand.grid(
 # Train control for caret train() function.
 train_control <- trainControl(
   method = "cv", 
-  number = 3,
+  number = 5,
   verboseIter = TRUE
 )
 
 # Run the model with above parameters.
 xgb_1st_tuning <- train(
-  x = train_treated,
-  y = train$SalePrice,
+  x = train_set_treated,
+  y = train_set$SalePrice,
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
@@ -914,13 +1066,20 @@ xgb_1st_tuning <- train(
 )
 
 
-# We observe that too low or too high learning rates don't fit the data optimally (either overfit or not complex enough)
-plot_tunings(xgb_1st_tuning)
+# # Visualization of the 1st tuning round and the most important features
+ggplot(xgb_1st_tuning)
+
+vip(xgb_1st_tuning, num_features = 20) # We take a look at the most important features
 
 # We can select the best tuning values from the model like this
 xgb_1st_tuning$bestTune
 
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_4_xgb_1st_tune", RMSE = min(xgb_1st_tuning$results$RMSE)))
+# We predict on the test_set and record the "out-of-bag" RMSE
+xgb_1st_tuning_pred <- predict(xgb_1st_tuning, test_set_treated)
+
+xgb_1st_tuning_rmse <- RMSE(xgb_1st_tuning_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_4_xgb_1st_tune", RMSE = xgb_1st_tuning_rmse))
 
 model_rmses %>% knitr::kable()
 
@@ -935,26 +1094,26 @@ model_rmses %>% knitr::kable()
 
 # We evaluate min_cild_weight values and check for a limited max tree depth with fixed learning rate
 tuneGrid <- expand.grid(
-  nrounds = seq(100, 500, 50),
-  max_depth = 3,
+  nrounds = seq(200, 1000, 100),
+  max_depth = 2,
   eta = 0.05,
   gamma = 0,
-  colsample_bytree = c(0.25, 0.5, 0.75, 1),
+  colsample_bytree = seq(0.2, 0.7, 0.1),
   min_child_weight = 1,
-  subsample = c(0.25, 0.5, 0.75, 1)
+  subsample = seq(0.4, 0.9, 0.1)
 )
 
 # Train control for caret train() function. We use 5-fold cross-validation.
 train_control <- caret::trainControl(
   method = "cv", 
-  number = 3,
+  number = 5,
   verboseIter = TRUE
 )
 
 # Run the model with above parameters.
 xgb_2nd_tuning <- train(
-  x = train_treated,
-  y = train$SalePrice,
+  x = train_set_treated,
+  y = train_set$SalePrice,
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
@@ -962,14 +1121,20 @@ xgb_2nd_tuning <- train(
 )
 
 
-# We plot the 2nd tuning and observe the effects of different min_child_weight values.
-plot_tunings(xgb_2nd_tuning)
+# # Visualization of the 2nd tuning round and the most important features
+ggplot(xgb_2nd_tuning)
+
+vip(xgb_2nd_tuning, num_features = 20) # We take a look at the most important features
 
 # We can select the best tuning values from the model like this
 xgb_2nd_tuning$bestTune
 
-# We record the RMSE of the best tuned model
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_5_xgb_2nd_tune", RMSE = min(xgb_2nd_tuning$results$RMSE)))
+# We predict on the test_set and record the "out-of-bag" RMSE
+xgb_2nd_tuning_pred <- predict(xgb_2nd_tuning, test_set_treated)
+
+xgb_2nd_tuning_rmse <- RMSE(xgb_2nd_tuning_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_5_xgb_2nd_tune", RMSE = xgb_2nd_tuning_rmse))
 
 model_rmses %>% knitr::kable()
 
@@ -981,26 +1146,26 @@ model_rmses %>% knitr::kable()
 
 # We evaluate column sampling with fixed depth, child weight and learning rate
 tuneGrid <- expand.grid(
-  nrounds = seq(50, 500, 50),
-  max_depth = 3,
+  nrounds = seq(200, 1000, 100),
+  max_depth = 2,
   eta = 0.05,
   gamma = 0,
-  colsample_bytree = 0.25,
-  min_child_weight = 1,
-  subsample = 0.75
+  colsample_bytree = 0.4,
+  min_child_weight = seq(1, 8, length = 6),
+  subsample = 0.9
 )
 
 # Train control for caret train() function. We use 5-fold cross-validation.
 train_control <- caret::trainControl(
   method = "cv", 
-  number = 3,
+  number = 5,
   verboseIter = TRUE
 )
 
 # Run the model with above parameters.
 xgb_3rd_tuning <- train(
-  x = train_treated,
-  y = train$SalePrice,
+  x = train_set_treated,
+  y = train_set$SalePrice,
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
@@ -1008,14 +1173,20 @@ xgb_3rd_tuning <- train(
 )
 
 
-# We plot the 3rd thuning
-plot_tunings(xgb_3rd_tuning)
+# Visualization of the 3rd tuning round and the most important features
+ggplot(xgb_3rd_tuning)
+
+vip(xgb_3rd_tuning, num_features = 20) # We take a look at the most important features
 
 # We can select the best tuning values from the model like this
 xgb_3rd_tuning$bestTune
 
-# We record the RMSE of the best tuned model
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_6_xgb_3rd_tune", RMSE = min(xgb_3rd_tuning$results$RMSE)))
+# We predict on the test_set and record the "out-of-bag" RMSE
+xgb_3rd_tuning_pred <- predict(xgb_3rd_tuning, test_set_treated)
+
+xgb_3rd_tuning_rmse <- RMSE(xgb_3rd_tuning_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_6_xgb_3rd_tune", RMSE = xgb_3rd_tuning_rmse))
 
 model_rmses %>% knitr::kable()
 
@@ -1056,7 +1227,7 @@ xgb_final_tuning <- train(
 
 
 # We plot the final thuning
-plot_tunings(xgb_final_tuning)
+ggplot(xgb_final_tuning)
 
 # We can select the best tuning values from the model like this
 xgb_final_tuning$bestTune
@@ -1072,6 +1243,25 @@ xgb_final_tuning_pred <- exp(predict(xgb_final_tuning, as.matrix(test_treated)))
 my_submission <- data.frame(Id = test$Id, SalePrice = xgb_final_tuning_pred)
 
 write.table(my_submission, file = "submission.csv", col.names = TRUE, row.names = FALSE, sep = ",")
+
+
+### Fitting the final XGBoost model on the entire train data ###
+
+# We select all relevant predictors
+variables <- names(subset(train, select = -c(Id, SalePrice)))
+
+# The vtreat function designTreatmentsZ helps encode all variables numerically via one-hot-encoding
+treatment_plan <- designTreatmentsZ(train, variables) # Devise a treatment plan for the variables
+(newvars <- treatment_plan %>%
+    use_series(scoreFrame) %>%  # use_series() works like a $, but within pipes, so we can access scoreFrame      
+    filter(code %in% c("clean", "lev")) %>%  # We select only the rows we care about: catP is a "prevalence fact" and tells whether the original level was rare or common and not really useful in the model
+    use_series(varName))           # We get the varName column
+
+# The prepare() function prepares our data subsets according to the treatment plan
+# we devised above and encodes all relevant variables "newvars" numerically
+train_treated <- prepare(treatment_plan, train,  varRestriction = newvars)
+test_treated <- prepare(treatment_plan, test,  varRestriction = newvars)
+
 
 
 
