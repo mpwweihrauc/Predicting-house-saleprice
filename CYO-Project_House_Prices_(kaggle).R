@@ -117,7 +117,7 @@ MSZoning_boxplot <- dataset[train$Id, ] %>%
   theme_bw() +
   theme(legend.position = "none")
 
-# Boxplot of MSZoning vs. SalePrice.
+# Scatterplot of MSZoning vs. SalePrice.
 MSZoning_scatterplot <- dataset[train$Id, ] %>%
   ggplot(aes(x = MSZoning, y = SalePrice, color = MSZoning)) +
   scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
@@ -153,29 +153,708 @@ dataset %>% select(MSSubClass, MSZoning) %>%
 # We will impute the most common value, "RL", for the houses with missing values in MSZoning.
 dataset$MSZoning[is.na(dataset$MSZoning)] <- "RL"
 
-
-
-
-
-
-
+#####
 # Feature 3: LotFrontage
+# LotFrontage: Linear feet of street connected to property
+#####
+
+# There are a lot of missing values in LotFrontage
+summary(dataset$LotFrontage)
+
+
+
+# Scatterplot of LotFrontage vs. SalePrice (Regular and log-transformed).
+# From the plots we can observe that LotFrontage doesn't seem to influence sale price a lot.
+# Also, there are two houses with very large LotFrontage values, but comparatively low sale prices.
+LotFrontage_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotFrontage, y = SalePrice)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("Scatterplot of LotFrontage vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  geom_smooth(method = "gam", formula = y ~ s(x))
+
+LotFrontage_scatterplot_log <- dataset[train$Id, ] %>%
+  ggplot(aes(x = log1p(LotFrontage), y = SalePrice)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("Scatterplot of log-transformed LotFrontage vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  geom_smooth(method = "gam", formula = y ~ s(x)) +
+  xlab("Log-transformed LotFrontage")
+
+grid.arrange(LotFrontage_scatterplot, LotFrontage_scatterplot_log, nrow = 2)
+
+# LotFrontage is quite predictive of sale price, as it is a measure of property size.
+cor(na.omit(dataset$LotFrontage[train$Id]), dataset[train$Id, ]$SalePrice[-which(is.na(dataset$LotFrontage))])
+
+# Does LotFrontage correlate well with LotArea? We plot the log-transformed LotFrontage vs. LotArea.
+# Indeed, we find that LotFrontage correlates well with LotArea, although there are some houses with
+# a larger deviation.
+dataset %>%
+  ggplot(aes(x = log1p(LotFrontage), y = log1p(LotArea))) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "gam", formula = y ~ s(x)) +
+  ggtitle("Scatterplot of log-transformed LotFrontage vs. LotArea") +
+  xlab("Log-transformed LotFrontage") +
+  ylab("Log-transformed LotArea") +
+  theme_bw()
+
+# We calculate the correlation between LotFrontage and LotArea. The correlation is quite strong, at almost 50%.
+# This correlation is probably not stronger due to quite a few houses having noticably larger LotAreas
+# while having lower LotFrontage values and vice-versa.
+cor(na.omit(dataset$LotFrontage), dataset$LotArea[-which(is.na(dataset$LotFrontage))])
+
+# It would be possible to impute the missing LotFrontage values by predicting them from LotArea
+# and other potentially related features, such as LotShape, Neighborhood, LandShape etc...
+# before we can d this, however, we need to wrangle the necessary features. LotFrontage value imputation will be conducted at a later point.
+
+
+#####
 # Feature 4: LotArea
+# LotArea: Lot size in square feet
+#####
+
+
+# There are no missing values in LotArea.
+summary(dataset$LotArea)
+
+# LotArea is encoded as an integer value, but it should be numeric.
+dataset$LotArea <- as.numeric(dataset$LotArea)
+
+# Scatterplot of LotArea vs. SalePrice (Regular and log-transformed).
+# As there seem to be some outlying houses, the log-transformation of LotArea helps us visualize
+# the relationship of LotArea with SalePrice better,
+LotArea_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotArea, y = SalePrice)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("Scatterplot of LotArea vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  geom_smooth(method = "gam", formula = y ~ s(x))
+
+LotArea_scatterplot_log <- dataset[train$Id, ] %>%
+  ggplot(aes(x = log1p(LotArea), y = SalePrice)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("Scatterplot of LotArea vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  geom_smooth(method = "gam", formula = y ~ s(x)) +
+  xlab("Log-transformed LotArea")
+
+grid.arrange(LotArea_scatterplot, LotArea_scatterplot_log, nrow = 2)
+
+# We calculate the correlation of LotArea with sale price.
+# LotArea is quite predictive of sale price.
+cor(dataset[train$Id, ]$LotArea, dataset[train$Id, ]$SalePrice)
+
+
+
+#####
 # Feature 5: Street
+# Street: Type of road access to property
+#####
+
+# There are no missing values in Street.
+summary(dataset$Street)
+
+# Boxplot of Street vs. SalePrice.
+Street_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Street, y = SalePrice, color = Street)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Street vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# Scatterplot of Street vs. SalePrice.
+Street_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Street, y = SalePrice, color = Street)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("Boxplot of Street vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+grid.arrange(Street_boxplot, Street_scatterplot, nrow = 1)
+
+# From the plots we can see that the type of road access to the property matters in terms of sale price.
+# However, only a few houses have gravel values in Street.
+
+#####
 # Feature 6: Alley
+# Alley: Type of alley access to property
+#####
+
+# There is a very large amount of missing values in Alley.
+# From the data description, "No alley access" was encoded as NA.
+# These NA entries are producing false missing value entries.
+summary(dataset$Alley)
+
+# We fix these wrong NA entries by replacing them with "None"
+dataset$Alley <- str_replace_na(dataset$Alley, replacement = "None")
+dataset$Alley <- factor(dataset$Alley, levels = c("None", "Grvl", "Pave"))
+
+#####
 # Feature 7: LotShape
+# LotShape: General shape of property
+#####
+
+# There are no missing values in LotShape.
+summary(dataset$LotShape)
+
+# Boxplot of LotShape vs. SalePrice
+LotShape_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotShape, y = SalePrice, color = LotShape)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of LotShape vs. SalePrice")
+
+# Scatterplot of LotShape vs. SalePrice
+LotShape_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotShape, y = SalePrice, color = LotShape)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of LotShape vs. SalePrice")
+
+grid.arrange(LotShape_boxplot, LotShape_scatterplot, nrow = 1)
+
+# From the plots we can see that some of the more expensive houses have a slightly irregular "IR1" LotShape.
+# A regular "Reg" LotShape is indicative of a lower sale price, but the category still contains many houses with larger sale price as well.
+# Only a small number of houses has a rally irregular "IR3" LotShape.
+# LotShape doesn't seem to influence sale price too much.
+
+
+
+#####
 # Feature 8: LandContour
+# LandContour: Flatness of the property
+#####
+
+# LandContour contains no missing values.
+summary(dataset$LandContour)
+
+# Boxplot of LandContour vs. SalePrice
+LandContour_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LandContour, y = SalePrice, color = LandContour)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of LandContour vs. SalePrice")
+
+# Scatterplot of LandContour vs. SalePrice
+LandContour_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LandContour, y = SalePrice, color = LandContour)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of LandContour vs. SalePrice")
+
+grid.arrange(LandContour_boxplot, LandContour_scatterplot, nrow = 1)
+
+# From the plots we can see that a Banked - Quick and significant rise from street grade to building entry in LandContour
+# can be indicative of a lower sale price of the house. The most expensive houses are on level, nearly flat terrain.
+# This feature will help to distinguish some of the lower priced from the higher priced houses.
+
+#####
 # Feature 9: Utilities
+# Utilities: Type of utilities available
+#####
+
+# There are a few missing values in Utilities.
+summary(dataset$Utilities)
+
+# LandContour contains no missing values.
+summary(dataset$LandContour)
+
+# Boxplot of Utilities vs. SalePrice
+Utilities_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Utilities, y = SalePrice, color = Utilities)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of Utilities vs. SalePrice")
+
+# Scatterplot of Utilities vs. SalePrice
+Utilities_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Utilities, y = SalePrice, color = Utilities)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of Utilities vs. SalePrice")
+
+grid.arrange(Utilities_boxplot, Utilities_scatterplot, nrow = 1)
+
+# From the plots we can see that there is only a single house with "NoSeWa" in Utilities, while all other houses have
+# access to all public utilities.
+# This feature is not helpful in predicting a houses sale price and can be removed from the dataset.
+dataset <- subset(dataset, select = -Utilities)
+
+
+#####
 # Feature 10: LotConfig
+# LotConfig: Lot configuration
+#####
+
+# There are no missing values in LotConfig.
+summary(dataset$LotConfig)
+
+
+# Boxplot of LotConfig vs. SalePrice
+LotConfig_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotConfig, y = SalePrice, color = LotConfig)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of LotConfig vs. SalePrice")
+
+# Scatterplot of LotConfig vs. SalePrice
+LotConfig_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotConfig, y = SalePrice, color = LotConfig)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of LotConfig vs. SalePrice")
+
+grid.arrange(LotConfig_boxplot, LotConfig_scatterplot, nrow = 1)
+
+# From the plots we can see that LotConfig doesn't appear to influence sale price very much.
+
+
+#####
 # Feature 11: LandSlope
+# LandSlope: Slope of property
+#####
+
+# There are no missing values in LandSlope.
+summary(dataset$LandSlope)
+
+# Boxplot of LandSlope vs. SalePrice
+LandSlope_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LandSlope, y = SalePrice, color = LandSlope)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of LandSlope vs. SalePrice")
+
+# Scatterplot of LandSlope vs. SalePrice
+LandSlope_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LandSlope, y = SalePrice, color = LandSlope)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of LandSlope vs. SalePrice")
+
+grid.arrange(LandSlope_boxplot, LandSlope_scatterplot, nrow = 1)
+
+# From the plots we can see that a gentle land slope can be predictive of a higher house sale price.
+
+#####
 # Feature 12: Neighbourhood
+# Neighborhood: Physical locations within Ames city limits
+#####
+
+# There are no missing values in Neighborhood.
+summary(dataset$Neighborhood)
+
+# Boxplot of Neighborhood vs. SalePrice
+dataset[train$Id, ] %>%
+  ggplot(aes(x = Neighborhood, y = SalePrice, color = Neighborhood)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of Neighborhood vs. SalePrice")
+
+# From the plot we can see that Northridge and Northridge High are where some of the most expensive houses are situated.
+# The respective Neighborhood is a strong indicator for a houses sale price.
+
+#####
 # Feature 13: Condition1
+# Condition1: Proximity to various conditions
+#####
+
+# There are no missing values in Condition1
+summary(dataset$Condition1)
+
+# Boxplot of Condition1 vs. SalePrice
+Condition1_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition1, y = SalePrice, color = Condition1)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of Condition1 vs. SalePrice")
+
+# Scatterplot of Condition1 vs. SalePrice
+Condition1_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition1, y = SalePrice, color = Condition1)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of Condition1 vs. SalePrice")
+
+grid.arrange(Condition1_boxplot, Condition1_scatterplot, nrow = 1)
+
+# From the plots we can see that adjacency to an artery or feeder street, as well as to a railroad may indicate a lower sale price.
+# Adjacency to a positive off-site feature can be indicative of an increased value.
+# Some categories are rather sparsely populated.
+
+# We will combine the 2 different road-associated categories ("Artery", "Feedr") and the 4 different rail-associated categories ("RRAe, "RRAn", "RRNe", "RRNn") into
+# 2 distinct categories. We will also combine the 2 psoitive off-site features.
+# Before the conversion, we convert the factor into a character vector.
+dataset$Condition1 <- as.character(dataset$Condition1)
+
+dataset$Condition1[dataset$Condition1 %in% c("Artery", "Feedr")] <- "NearRoad"
+dataset$Condition1[dataset$Condition1 %in% c("RRAe", "RRAn", "RRNe", "RRNn")] <- "NearRailroad"
+dataset$Condition1[dataset$Condition1 %in% c("PosA", "PosN")] <- "NearPosOffSite"
+
+# We convert back into a factor with appropriate levels.
+dataset$Condition1 <- factor(dataset$Condition1, levels = c("Norm", "NearRoad", "NearRailroad", "NearPosOffSite"))
+
+# Boxplot of changed Condition1 vs. SalePrice
+Condition1_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition1, y = SalePrice, color = Condition1)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of changed Condition1 vs. SalePrice")
+
+# Scatterplot of changed Condition1 vs. SalePrice
+Condition1_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition1, y = SalePrice, color = Condition1)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of changed Condition1 vs. SalePrice")
+
+grid.arrange(Condition1_boxplot, Condition1_scatterplot, nrow = 1)
+
+# The plots of the changed Condition1 feature show that adjacency to a road or railroad
+# tends to decrease sale price, while adjacency to a positive off-site leads leads to an increase.
+# Almost all expensive houses are in the "normal" category.
+
+#####
 # Feature 14: Condition2
+# Condition2: Proximity to various conditions (if more than one is present)
+#####
+
+# Some houses are adjacent to more than one condition, else they received a "normal" entry in Condition2.
+
+# There are no missing values in Condition2. However, there is no "RRNe" entry.
+summary(dataset$Condition2)
+
+# We will apply the same changes to Condition2 as we did to Condition1.
+dataset$Condition2 <- as.character(dataset$Condition2)
+
+dataset$Condition2[dataset$Condition2 %in% c("Artery", "Feedr")] <- "NearRoad"
+dataset$Condition2[dataset$Condition2 %in% c("RRAe", "RRAn", "RRNn")] <- "NearRailroad"
+dataset$Condition2[dataset$Condition2 %in% c("PosA", "PosN")] <- "NearPosOffSite"
+
+# We convert back into a factor with appropriate levels.
+dataset$Condition2 <- factor(dataset$Condition2, levels = c("Norm", "NearRoad", "NearRailroad", "NearPosOffSite"))
+
+# Boxplot of changed Condition2 vs. SalePrice.
+# Clearly, being near a positive off-site raises the sale price, while adjacency to a busy road or railroad reduces it.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition2, y = SalePrice, color = Condition2)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of changed Condition2 vs. SalePrice")
+
+# Are there houses which are adjacent to a road and a railroad simultaneously?
+dataset[train$Id, ] %>%
+  filter(Condition1 %in% c("NearRoad", "NearRailroad"), Condition2 %in% c("NearRoad", "NearRailroad")) %>%
+  summarize(avg.value = mean(SalePrice))
+
+# Indeed, the average SalePrice of the houses with a "NearRoad" and a "NearRailRoad" is rather low.
+
+
+### Merging of Condition1 and Condition2 ###
+# As Condition2 has a rather low amount of entries, we will merge Condition 1 and 2.
+# Prior to this, we will merge "NearRoad" and "NearRailRoad" into a single category, "NearNegOffSite".
+dataset$Condition1 <- as.character(dataset$Condition1)
+dataset$Condition1[which(dataset$Condition1 %in% c("NearRoad", "NearRailroad"))] <- "NearNegOffSite"
+
+# Next, we will determine which houses are nearby a second negative or positive off-site and create respective categories.
+dataset$Condition2 <- as.character(dataset$Condition2)
+
+# As there is only a single house which is near a positive as well as a negative off-site, we will assign it to the "normal" group, assuming that the effects cancel eachother out.
+# As there are only two houses near two positive off-sites, we assign them to "NearPosOffSite".
+
+dataset$Condition1[which(dataset$Condition2 %in% c("NearRoad", "NearRailRoad"))] <- "NearTwoNegOffSites"
+index <- which(dataset$Condition2 %in% c("NearPosOffSite")) 
+dataset$Condition1[index[which(dataset$Condition1[index] == "NearPosOffSite")]] <- "NearPosOffSite"
+dataset$Condition1[index[which(dataset$Condition1[index] == "NearNegOffSite")]] <- "Normal"
+dataset$Condition1[dataset$Condition1 == "Norm"] <- "Normal"
+
+dataset$Condition1 <- factor(dataset$Condition1, levels = c("Normal", "NearNegOffSite", "NearTwoNegOffSites", "NearPosOffSite"))
+
+# We rename the engineered feature and remove the previous ones.
+dataset$Condition <- dataset$Condition1
+dataset <- subset(dataset, select = -c(Condition1, Condition2))
+
+
+# Boxplot of the merged Condition1 vs. SalePrice.
+# Clearly, being near a positive off-site raises the sale price, while adjacency to a busy road or railroad reduces it.
+Condition_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition, y = SalePrice, color = Condition)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of engineered Condition vs. SalePrice")
+
+Condition_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition, y = SalePrice, color = Condition)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of engineered Condition vs. SalePrice")
+
+grid.arrange(Condition_boxplot, Condition_scatterplot, nrow = 2)
+
+# From the plots of the engineered Condition feature, we can see that being near one or even two negative off-sites (road, railroad) might indicate a lower sale price.
+# Adjacency to a positive off-site is associated with a higher sale price, however all expensive houses are in the "Normal" category.
+
+
+#####
 # Feature 15: BldgType
+# BldgType: Type of dwelling
+#####
+
+# There are no missing values in BldgType
+summary(dataset$BldgType)
+
+# Boxplot of BldgType vs. SalePrice.
+BldgType_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BldgType, y = SalePrice, color = BldgType)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BldgType vs. SalePrice")
+
+BldgType_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BldgType, y = SalePrice, color = BldgType)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BldgType vs. SalePrice")
+
+grid.arrange(BldgType_boxplot, BldgType_scatterplot, nrow = 1)
+
+
+# From the plots we can see that the most expensive houses are all detached single-family houses ("1Fam").
+# Even then, there must be other distinguishing features behind those, as the median sale price of 1Fam houses isn't any higher compared to the other categories.
+
+#####
 # Feature 16: HouseStyle
+# HouseStyle: Style of dwelling
+#####
+
+# There are no missing values in HouseStyle
+summary(dataset$HouseStyle)
+
+# Boxplot of HouseStyle vs. SalePrice.
+HouseStyle_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = HouseStyle, y = SalePrice, color = HouseStyle)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of HouseStyle vs. SalePrice")
+
+HouseStyle_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = HouseStyle, y = SalePrice, color = HouseStyle)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of HouseStyle vs. SalePrice")
+
+grid.arrange(HouseStyle_boxplot, HouseStyle_scatterplot, nrow = 1)
+
+# HouseStyle doesn't reveal very much about sale price, but unfinished 1.5 and 2.5 storey houses tend to have lower sale prices compared to completed ones.
+# Unsurprisingly, the most expensive houses are in the 2Story category, while another large set of expensve houses are in the 1Story category.
+
+
+#####
 # Feature 17: OverallQual
+# OverallQual: Rates the overall material and finish of the house
+#####
+
+# There are no missing values in OverallQual
+summary(dataset$OverallQual)
+
+# OverallQual should be an ordinal factor variable, not an integer.
+dataset$OverallQual <- factor(dataset$OverallQual)
+
+
+# Boxplot of OverallQual vs. SalePrice.
+OverallQual_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallQual, y = SalePrice, color = OverallQual)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of OverallQual vs. SalePrice")
+
+OverallQual_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallQual, y = SalePrice, color = OverallQual)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of OverallQual vs. SalePrice")
+
+grid.arrange(OverallQual_boxplot, OverallQual_scatterplot, nrow = 1)
+
+# OverallQual has tremendous influence on a houses sale price. In the highest category, 10, there are 2 houses with
+# unexpectedly low, and extremely high sale prices. This increases the range a lot.
+# OverallQual will be very important for predicting a houses value.
+
+# There are only a few houses in the lowest OverallQual categories 1 and 2. Additionally, the higher quality levels 
+# show quite a large range of values.
+# It would be beneficial to bin OverallQual into a lower number of categories, by combining several levels into one.
+dataset$OverallQual <- as.numeric(dataset$OverallQual)
+
+dataset$OverallQual[dataset$OverallQual %in% c(1:2)] <- "Poor"
+dataset$OverallQual[dataset$OverallQual %in% c(3:4)] <- "Fair"
+dataset$OverallQual[dataset$OverallQual %in% c(5:6)] <- "Average"
+dataset$OverallQual[dataset$OverallQual %in% c(7:8)] <- "Good"
+dataset$OverallQual[dataset$OverallQual %in% c(9:10)] <- "Excellent"
+
+dataset$OverallQual <- factor(dataset$OverallQual, levels = c("Poor", "Fair", "Average", "Good", "Excellent"))
+
+# Boxplot of engineered OverallQual vs. SalePrice.
+OverallQual_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallQual, y = SalePrice, color = OverallQual)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of engineered OverallQual vs. SalePrice")
+
+OverallQual_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallQual, y = SalePrice, color = OverallQual)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of engineered OverallQual vs. SalePrice")
+
+grid.arrange(OverallQual_boxplot, OverallQual_scatterplot, nrow = 1)
+
+# The engineered OverallQual levels are now very distinct in sale price.
+
+
+#####
 # Feature 18: OverallCond
+# OverallCond: Rates the overall condition of the house
+#####
+
+# There are no missing values in OverallCond
+summary(dataset$OverallCond)
+
+# OverallCond should be an ordinal factor variable, not an integer.
+dataset$OverallCond <- factor(dataset$OverallCond)
+
+
+# Boxplot of OverallCond vs. SalePrice.
+OverallCond_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallCond, y = SalePrice, color = OverallCond)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of OverallCond vs. SalePrice")
+
+OverallCond_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallCond, y = SalePrice, color = OverallCond)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of OverallCond vs. SalePrice")
+
+grid.arrange(OverallCond_boxplot, OverallCond_scatterplot, nrow = 1)
+
+# Contrary to intuition, OverallCond is much less predictive of a houses sale price and there is not a single house with a "very excellent" condition.
+# We observe that the most expensive houses are between 4 - 9, with 5 having most of them. OverallCond below 5 holds houses with lower sale price.
+# The lower two levels hold only very few houses.
+
+# It makes sense to bin this feature into a lower number of levels.
+# OverallCond 1-4 will become "Bad", OverallCond 5-7 will become "Good" and OverallCond >= 8 will become "Excellent".
+dataset$OverallCond <- as.numeric(dataset$OverallCond)
+dataset$OverallCond[dataset$OverallCond %in% c(1:4)] <- "Bad"
+dataset$OverallCond[dataset$OverallCond %in% c(5:7)] <- "Good"
+dataset$OverallCond[dataset$OverallCond %in% c(8:9)] <- "Excellent"
+
+dataset$OverallCond <- factor(dataset$OverallCond, levels = c("Bad", "Good", "Excellent"))
+
+# Boxplot of engineered OverallCond vs. SalePrice.
+OverallCond_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallCond, y = SalePrice, color = OverallCond)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of engineered OverallCond vs. SalePrice")
+
+OverallCond_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallCond, y = SalePrice, color = OverallCond)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of engineered OverallCond vs. SalePrice")
+
+grid.arrange(OverallCond_boxplot, OverallCond_scatterplot, nrow = 1)
+
+# We now have less categories for OverallCond, with more houses in each of them. A bad OverallCond can be idnicative of a lower sale price.
+
+
+
+
+
+
+
+#####
 # Feature 19: YearBuilt
+#
+#####
+
+
+
+
+
+
+
+
 # Feature 20: YearRemodAdd
 # Feature 21: RoofStyle
 # Feature 22: RoofMatl
@@ -183,6 +862,131 @@ dataset$MSZoning[is.na(dataset$MSZoning)] <- "RL"
 # Feature 24: Exterior2nd
 # Feature 25: MasVnrType
 # Feature 26: MasVnrArea
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#########################################################################################################
+# Dealing with missing values in LotFrontage, which are the linear feet of street connected to property.
+# LotFrontage might be closely correlated to the LotArea, the lot size in square feet.
+
+# We plot log-transformed LotArea against LotFrontage. Indeed, there seems to be a positive correlation
+# between LotFrontage and LotArea as shown by the fitted general additive model explaining 
+# LotFrontage as a smooth function of LotArea. NAs are automatically removed from the plot.
+dataset %>%
+  ggplot(aes(x = log(LotArea), y = log(LotFrontage))) +
+  geom_point() +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
+  ggtitle("Linear feet of street connected to property as a function of the lot size in square feet") +
+  theme_bw()
+
+# We will apply a gradient boosting machine model to predict the missing LotFrontage values.
+# We can assume that other features might also be informative about LotFrontage, so we include
+# them in a gradient boosting machine model below (xgboost package; and vtreat package for data preparation)
+
+
+# We separate "dataset" into "LF" test and train by filtering out the rows with missing LotFrontage
+LF_index <- which(is.na(dataset$LotFrontage))
+LF_train <- dataset[-LF_index, ]
+LF_test <- dataset[LF_index, ]
+
+
+
+# We select all variables that might influence LotFrontage according to our intuition and the data description
+variables <- c("LotArea", "Street", "LotShape", "LandContour", "LotConfig", "LandSlope",
+               "Neighborhood", "BldgType", "Condition1", "Condition2")
+
+# The vtreat function designTreatmentsZ helps encode all variables numerically
+treatment_plan <- designTreatmentsZ(LF_train, variables) # Devise a treatment plan for the variables
+(newvars <- treatment_plan %>%
+    use_series(scoreFrame) %>%  # use_series() works like a $, but within pipes, so we can access scoreFrame      
+    filter(code %in% c("clean", "lev")) %>%  # We select only the rows we care about
+    use_series(varName))           # We get the varName column
+
+# The prepare() function prepares our data subsets according to the treatment plan
+# we devised above and encodes all relevant variables "newvars" numerically
+train_treated <- prepare(treatment_plan, LF_train,  varRestriction = newvars)
+test_treated <- prepare(treatment_plan, LF_test,  varRestriction = newvars)
+
+# We can now see the numerical encoding of all variables thanks to treatment and preparation above
+str(train_treated)
+str(test_treated)
+
+
+########### Tuning for LotFrontage ###########
+
+# Define a grid of tuning parameters for the caret::train() function
+# We select some empirically optimized parameters
+grid_default <- expand.grid(
+  nrounds = seq(from = 100, to = 800, 50), 
+  max_depth = 4,
+  eta = 0.05,
+  gamma = 0,
+  colsample_bytree = 0.75, 
+  min_child_weight = 1, 
+  subsample = 1 
+)
+
+# Train control for caret train() function; we use cross-validation to estimate out-of-sample error
+train_control <- caret::trainControl(
+  method = "repeatedcv", # We use 5-fold cross-validation
+  number = 3,
+  repeats = 3,
+  verboseIter = TRUE,
+  allowParallel = TRUE
+)
+
+# Train the xgboost model for LotFrontage
+xgb_LF_tuned <- train(
+  x = train_treated,
+  y = LF_train$LotFrontage, # The outcome variable comes from the pre-treated data
+  trControl = train_control,
+  tuneGrid = grid_default,
+  method = "xgbTree",
+  verboseIter = TRUE
+)
+
+xgb_LF_tuned$bestTune # We take a look at the best tuning values
+
+ggplot(xgb_LF_tuned) # We use our defined function to visualize the tuning effects
+
+
+# We predict LotFrontage
+LF_test$LotFrontagePred<- predict(xgb_LF_tuned, newdata = as.matrix(test_treated))
+
+# Missing value imputation with the predicted values for LotFrontage
+dataset$LotFrontage[LF_index] <- LF_test$LotFrontagePred
+summary(dataset)
+
+# We can plot the predicted LotFrontage values against the LotArea values in LF_test to see if we observe the
+# correlation between the two variables.
+# Indeed, the predicted LotFrontage values seem to behave in similar fashion to the actual ones we observed above in the whole dataset
+LF_test %>%
+  ggplot(aes(x = log(LotArea), y = log(LotFrontagePred))) +
+  geom_point() +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
+  ggtitle("(Predicted) linear feet of street connected to property as a function of the lot size in square feet")
+
+
+
+
+
+
+
+
 
 
 # We fix the encoding of certain columns, as sometimes "NA" was put for the absence of a feature
@@ -505,106 +1309,6 @@ dataset$OverallQual <- as.numeric(dataset$OverallQual)
 #####
 
 
-#########################################################################################################
-# Dealing with missing values in LotFrontage, which are the linear feet of street connected to property.
-# LotFrontage might be closely correlated to the LotArea, the lot size in square feet.
-
-# We plot log-transformed LotArea against LotFrontage. Indeed, there seems to be a positive correlation
-# between LotFrontage and LotArea as shown by the fitted general additive model explaining 
-# LotFrontage as a smooth function of LotArea. NAs are automatically removed from the plot.
-dataset %>%
-  ggplot(aes(x = log(LotArea), y = log(LotFrontage))) +
-  geom_point() +
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
-  ggtitle("Linear feet of street connected to property as a function of the lot size in square feet") +
-  theme_bw()
-
-# We will apply a gradient boosting machine model to predict the missing LotFrontage values.
-# We can assume that other features might also be informative about LotFrontage, so we include
-# them in a gradient boosting machine model below (xgboost package; and vtreat package for data preparation)
-
-
-# We separate "dataset" into "LF" test and train by filtering out the rows with missing LotFrontage
-LF_index <- which(is.na(dataset$LotFrontage))
-LF_train <- dataset[-LF_index, ]
-LF_test <- dataset[LF_index, ]
-
-
-
-# We select all variables that might influence LotFrontage according to our intuition and the data description
-variables <- c("LotArea", "Street", "LotShape", "LandContour", "LotConfig", "LandSlope",
-               "Neighborhood", "BldgType", "Condition1", "Condition2")
-
-# The vtreat function designTreatmentsZ helps encode all variables numerically
-treatment_plan <- designTreatmentsZ(LF_train, variables) # Devise a treatment plan for the variables
-(newvars <- treatment_plan %>%
-    use_series(scoreFrame) %>%  # use_series() works like a $, but within pipes, so we can access scoreFrame      
-    filter(code %in% c("clean", "lev")) %>%  # We select only the rows we care about
-    use_series(varName))           # We get the varName column
-
-# The prepare() function prepares our data subsets according to the treatment plan
-# we devised above and encodes all relevant variables "newvars" numerically
-train_treated <- prepare(treatment_plan, LF_train,  varRestriction = newvars)
-test_treated <- prepare(treatment_plan, LF_test,  varRestriction = newvars)
-
-# We can now see the numerical encoding of all variables thanks to treatment and preparation above
-str(train_treated)
-str(test_treated)
-
-
-########### Tuning for LotFrontage ###########
-
-# Define a grid of tuning parameters for the caret::train() function
-# We select some empirically optimized parameters
-grid_default <- expand.grid(
-  nrounds = seq(from = 100, to = 800, 50), 
-  max_depth = 4,
-  eta = 0.05,
-  gamma = 0,
-  colsample_bytree = 0.75, 
-  min_child_weight = 1, 
-  subsample = 1 
-)
-
-# Train control for caret train() function; we use cross-validation to estimate out-of-sample error
-train_control <- caret::trainControl(
-  method = "repeatedcv", # We use 5-fold cross-validation
-  number = 3,
-  repeats = 3,
-  verboseIter = TRUE,
-  allowParallel = TRUE
-)
-
-# Train the xgboost model for LotFrontage
-xgb_LF_tuned <- train(
-  x = train_treated,
-  y = LF_train$LotFrontage, # The outcome variable comes from the pre-treated data
-  trControl = train_control,
-  tuneGrid = grid_default,
-  method = "xgbTree",
-  verboseIter = TRUE
-)
-
-xgb_LF_tuned$bestTune # We take a look at the best tuning values
-
-ggplot(xgb_LF_tuned) # We use our defined function to visualize the tuning effects
-
-
-# We predict LotFrontage
-LF_test$LotFrontagePred<- predict(xgb_LF_tuned, newdata = as.matrix(test_treated))
-
-# Missing value imputation with the predicted values for LotFrontage
-dataset$LotFrontage[LF_index] <- LF_test$LotFrontagePred
-summary(dataset)
-
-# We can plot the predicted LotFrontage values against the LotArea values in LF_test to see if we observe the
-# correlation between the two variables.
-# Indeed, the predicted LotFrontage values seem to behave in similar fashion to the actual ones we observed above in the whole dataset
-LF_test %>%
-  ggplot(aes(x = log(LotArea), y = log(LotFrontagePred))) +
-  geom_point() +
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
-  ggtitle("(Predicted) linear feet of street connected to property as a function of the lot size in square feet")
 
 
 
