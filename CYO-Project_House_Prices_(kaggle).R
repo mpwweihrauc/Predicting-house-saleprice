@@ -152,8 +152,17 @@ dataset %>% select(MSSubClass, MSZoning) %>%
   filter(MSSubClass %in% c(20, 30, 70)) %>%
   count()
 
-# We will impute the most common value, "RL", for the houses with missing values in MSZoning.
-dataset$MSZoning[is.na(dataset$MSZoning)] <- "RL"
+# We use kNN-based missing value imputation
+knn_model <- kNN(dataset, variable = "MSZoning", k = 9)
+
+# Predicted MSZoning values
+knn_model[knn_model$MSZoning_imp == TRUE, ]$MSZoning
+
+# We impute the values
+dataset$MSZoning[which(is.na(dataset$MSZoning))] <- knn_model[knn_model$MSZoning_imp == TRUE, ]$MSZoning
+
+
+
 
 #####
 # Feature 3: LotFrontage
@@ -1076,126 +1085,191 @@ knn_model <- kNN(dataset, variable = c("Exterior1st", "Exterior2nd"), k = 5)
 dataset$Exterior1st[2152] <- knn_model[knn_model$Exterior1st_imp == TRUE, ]$Exterior1st
 dataset$Exterior2nd[2152] <- knn_model[knn_model$Exterior2nd_imp == TRUE, ]$Exterior2nd
 
-
+#####
 # Feature 25: MasVnrType
+# MasVnrType: Masonry veneer type
+#####
+
+# There are some missing values in MasVnrType
+summary(dataset$MasVnrType)
+
+
+# Boxplot of MasVnrType vs. SalePrice.
+MasVnrType_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrType, y = SalePrice, color = MasVnrType)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of MasVnrType vs. SalePrice")
+
+MasVnrType_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrType, y = SalePrice, color = MasVnrType)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of MasVnrType vs. SalePrice")
+
+grid.arrange(MasVnrType_boxplot, MasVnrType_scatterplot, nrow = 1)
+
+
+# We will use kNN-based predictions to impute the missing values.
+knn_model <- kNN(dataset, variable = "MasVnrType", k = 9)
+
+# Missing value imputation of MasVnrType
+dataset[which(is.na(dataset$MasVnrType)), ]$MasVnrType <- knn_model[knn_model$MasVnrType_imp == TRUE, ]$MasVnrType
+
+
+# Boxplot of MasVnrType vs. SalePrice after missing value imputation.
+MasVnrType_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrType, y = SalePrice, color = MasVnrType)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of MasVnrType vs. SalePrice after missing value imputation")
+
+MasVnrType_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrType, y = SalePrice, color = MasVnrType)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of MasVnrType vs. SalePrice after missing value imputation")
+
+grid.arrange(MasVnrType_boxplot, MasVnrType_scatterplot, nrow = 1)
+
+
+#####
 # Feature 26: MasVnrArea
+#
+#####
+
+# There are some missing values in MasVnrArea, presumably the same houses that had missing values in MasVnrType.
+summary(dataset$MasVnrArea)
+
+# MasVnrArea should be a numeric variable.
+dataset$MasVnrArea <- as.numeric(dataset$MasVnrArea)
+
+# Scatterplot of MasVnrArea vs. SalePrice.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrArea, y = SalePrice, color = MasVnrArea)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of MasVnrArea vs. SalePrice") +
+  geom_smooth(method = "lm")
+
+# From the plot we can see that many houses actually have 0 MasVnrArea.
+
+# We will use kNN-based predictions to impute the missing values.
+knn_model <- kNN(dataset, variable = "MasVnrArea", k = 9)
+
+# Missing value imputation of MasVnrArea
+dataset[which(is.na(dataset$MasVnrArea)), ]$MasVnrArea <- knn_model[knn_model$MasVnrArea_imp == TRUE, ]$MasVnrArea
+
+# Scatterplot of MasVnrArea vs. SalePrice after missing value imputation.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrArea, y = SalePrice, color = MasVnrArea)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of MasVnrArea vs. SalePrice after missing value imputation") +
+  geom_smooth(method = "lm")
+
+#####
+# Feature 27: ExterQual
+# ExterQual: Evaluates the quality of the material on the exterior 
+#####
+
+# There are no missing values in ExterQual.
+summary(dataset$ExterQual)
+
+# Boxplot of ExterQual vs. SalePrice.
+ExterQual_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterQual, y = SalePrice, color = ExterQual)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of ExterQual vs. SalePrice")
+
+ExterQual_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterQual, y = SalePrice, color = ExterQual)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of ExterQual vs. SalePrice")
+
+grid.arrange(ExterQual_boxplot, ExterQual_scatterplot, nrow = 1)
+
+# From the plots, we can see that ExterQual is a weaker predictor of sale price.
+
+# We transform the qualitative ordinal factor into a numeric containing the present levels.
+dataset$ExterQual <- as.numeric(factor(dataset$ExterQual, levels=c("Fa", "TA", "Gd", "Ex")))
+
+# Scatterplot of engineered ExterQual vs. SalePrice
+dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterQual, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of engineered ExterQual vs. SalePrice") +
+  geom_smooth(method = "lm")
 
 
+#####
+# Feature 28: ExterCond
+# ExterCond: Evaluates the quality of the material on the exterior 
+#####
+
+# There are no missing values in ExterCond.
+summary(dataset$ExterCond)
+
+# Boxplot of ExterCond vs. SalePrice.
+ExterCond_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterCond, y = SalePrice, color = ExterCond)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of ExterCond vs. SalePrice")
+
+ExterCond_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterCond, y = SalePrice, color = ExterCond)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of ExterCond vs. SalePrice")
+
+grid.arrange(ExterCond_boxplot, ExterCond_scatterplot, nrow = 1)
+
+# From the plots, we can see that not a single house has "poor" ExterCond. ExterCond is a strong predictor of sale price.
+
+# We transform the qualitative ordinal factor into a numeric containing the present levels.
+dataset$ExterCond <- as.numeric(factor(dataset$ExterCond, levels=c("Po", "Fa", "TA", "Gd", "Ex")))
+
+# Scatterplot of engineered ExterCond vs. SalePrice
+dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterCond, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of engineered ExterCond vs. SalePrice") +
+  geom_smooth(method = "lm")
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-#########################################################################################################
-# Dealing with missing values in LotFrontage, which are the linear feet of street connected to property.
-# LotFrontage might be closely correlated to the LotArea, the lot size in square feet.
-
-# We plot log-transformed LotArea against LotFrontage. Indeed, there seems to be a positive correlation
-# between LotFrontage and LotArea as shown by the fitted general additive model explaining 
-# LotFrontage as a smooth function of LotArea. NAs are automatically removed from the plot.
-dataset %>%
-  ggplot(aes(x = log(LotArea), y = log(LotFrontage))) +
-  geom_point() +
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
-  ggtitle("Linear feet of street connected to property as a function of the lot size in square feet") +
-  theme_bw()
-
-# We will apply a gradient boosting machine model to predict the missing LotFrontage values.
-# We can assume that other features might also be informative about LotFrontage, so we include
-# them in a gradient boosting machine model below (xgboost package; and vtreat package for data preparation)
-
-
-# We separate "dataset" into "LF" test and train by filtering out the rows with missing LotFrontage
-LF_index <- which(is.na(dataset$LotFrontage))
-LF_train <- dataset[-LF_index, ]
-LF_test <- dataset[LF_index, ]
-
-
-
-# We select all variables that might influence LotFrontage according to our intuition and the data description
-variables <- c("LotArea", "Street", "LotShape", "LandContour", "LotConfig", "LandSlope",
-               "Neighborhood", "BldgType", "Condition1", "Condition2")
-
-# The vtreat function designTreatmentsZ helps encode all variables numerically
-treatment_plan <- designTreatmentsZ(LF_train, variables) # Devise a treatment plan for the variables
-(newvars <- treatment_plan %>%
-    use_series(scoreFrame) %>%  # use_series() works like a $, but within pipes, so we can access scoreFrame      
-    filter(code %in% c("clean", "lev")) %>%  # We select only the rows we care about
-    use_series(varName))           # We get the varName column
-
-# The prepare() function prepares our data subsets according to the treatment plan
-# we devised above and encodes all relevant variables "newvars" numerically
-train_treated <- prepare(treatment_plan, LF_train,  varRestriction = newvars)
-test_treated <- prepare(treatment_plan, LF_test,  varRestriction = newvars)
-
-# We can now see the numerical encoding of all variables thanks to treatment and preparation above
-str(train_treated)
-str(test_treated)
-
-
-########### Tuning for LotFrontage ###########
-
-# Define a grid of tuning parameters for the caret::train() function
-# We select some empirically optimized parameters
-grid_default <- expand.grid(
-  nrounds = seq(from = 100, to = 800, 50), 
-  max_depth = 4,
-  eta = 0.05,
-  gamma = 0,
-  colsample_bytree = 0.75, 
-  min_child_weight = 1, 
-  subsample = 1 
-)
-
-# Train control for caret train() function; we use cross-validation to estimate out-of-sample error
-train_control <- caret::trainControl(
-  method = "repeatedcv", # We use 5-fold cross-validation
-  number = 3,
-  repeats = 3,
-  verboseIter = TRUE,
-  allowParallel = TRUE
-)
-
-# Train the xgboost model for LotFrontage
-xgb_LF_tuned <- train(
-  x = train_treated,
-  y = LF_train$LotFrontage, # The outcome variable comes from the pre-treated data
-  trControl = train_control,
-  tuneGrid = grid_default,
-  method = "xgbTree",
-  verboseIter = TRUE
-)
-
-xgb_LF_tuned$bestTune # We take a look at the best tuning values
-
-ggplot(xgb_LF_tuned) # We use our defined function to visualize the tuning effects
-
-
-# We predict LotFrontage
-LF_test$LotFrontagePred<- predict(xgb_LF_tuned, newdata = as.matrix(test_treated))
-
-# Missing value imputation with the predicted values for LotFrontage
-dataset$LotFrontage[LF_index] <- LF_test$LotFrontagePred
-summary(dataset)
-
-# We can plot the predicted LotFrontage values against the LotArea values in LF_test to see if we observe the
-# correlation between the two variables.
-# Indeed, the predicted LotFrontage values seem to behave in similar fashion to the actual ones we observed above in the whole dataset
-LF_test %>%
-  ggplot(aes(x = log(LotArea), y = log(LotFrontagePred))) +
-  geom_point() +
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
-  ggtitle("(Predicted) linear feet of street connected to property as a function of the lot size in square feet")
+#####
+# Feature 29: Foundation
+# Foundation: Type of foundation
+#####
 
 
 
@@ -2315,4 +2389,115 @@ my_ensemble <- data.frame(Id = test$Id, SalePrice = (xgb_final_tuning_pred + exp
 
 write.table(my_ensemble, file = "submission_ensemble_2.csv", col.names = TRUE, row.names = FALSE, sep = ",")
 
+
+
+
+
+
+
+
+
+
+
+# Old LotFrontage prediction
+#########################################################################################################
+# Dealing with missing values in LotFrontage, which are the linear feet of street connected to property.
+# LotFrontage might be closely correlated to the LotArea, the lot size in square feet.
+
+# We plot log-transformed LotArea against LotFrontage. Indeed, there seems to be a positive correlation
+# between LotFrontage and LotArea as shown by the fitted general additive model explaining 
+# LotFrontage as a smooth function of LotArea. NAs are automatically removed from the plot.
+dataset %>%
+  ggplot(aes(x = log(LotArea), y = log(LotFrontage))) +
+  geom_point() +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
+  ggtitle("Linear feet of street connected to property as a function of the lot size in square feet") +
+  theme_bw()
+
+# We will apply a gradient boosting machine model to predict the missing LotFrontage values.
+# We can assume that other features might also be informative about LotFrontage, so we include
+# them in a gradient boosting machine model below (xgboost package; and vtreat package for data preparation)
+
+
+# We separate "dataset" into "LF" test and train by filtering out the rows with missing LotFrontage
+LF_index <- which(is.na(dataset$LotFrontage))
+LF_train <- dataset[-LF_index, ]
+LF_test <- dataset[LF_index, ]
+
+
+
+# We select all variables that might influence LotFrontage according to our intuition and the data description
+variables <- c("LotArea", "Street", "LotShape", "LandContour", "LotConfig", "LandSlope",
+               "Neighborhood", "BldgType", "Condition1", "Condition2")
+
+# The vtreat function designTreatmentsZ helps encode all variables numerically
+treatment_plan <- designTreatmentsZ(LF_train, variables) # Devise a treatment plan for the variables
+(newvars <- treatment_plan %>%
+    use_series(scoreFrame) %>%  # use_series() works like a $, but within pipes, so we can access scoreFrame      
+    filter(code %in% c("clean", "lev")) %>%  # We select only the rows we care about
+    use_series(varName))           # We get the varName column
+
+# The prepare() function prepares our data subsets according to the treatment plan
+# we devised above and encodes all relevant variables "newvars" numerically
+train_treated <- prepare(treatment_plan, LF_train,  varRestriction = newvars)
+test_treated <- prepare(treatment_plan, LF_test,  varRestriction = newvars)
+
+# We can now see the numerical encoding of all variables thanks to treatment and preparation above
+str(train_treated)
+str(test_treated)
+
+
+########### Tuning for LotFrontage ###########
+
+# Define a grid of tuning parameters for the caret::train() function
+# We select some empirically optimized parameters
+grid_default <- expand.grid(
+  nrounds = seq(from = 100, to = 800, 50), 
+  max_depth = 4,
+  eta = 0.05,
+  gamma = 0,
+  colsample_bytree = 0.75, 
+  min_child_weight = 1, 
+  subsample = 1 
+)
+
+# Train control for caret train() function; we use cross-validation to estimate out-of-sample error
+train_control <- caret::trainControl(
+  method = "repeatedcv", # We use 5-fold cross-validation
+  number = 3,
+  repeats = 3,
+  verboseIter = TRUE,
+  allowParallel = TRUE
+)
+
+# Train the xgboost model for LotFrontage
+xgb_LF_tuned <- train(
+  x = train_treated,
+  y = LF_train$LotFrontage, # The outcome variable comes from the pre-treated data
+  trControl = train_control,
+  tuneGrid = grid_default,
+  method = "xgbTree",
+  verboseIter = TRUE
+)
+
+xgb_LF_tuned$bestTune # We take a look at the best tuning values
+
+ggplot(xgb_LF_tuned) # We use our defined function to visualize the tuning effects
+
+
+# We predict LotFrontage
+LF_test$LotFrontagePred<- predict(xgb_LF_tuned, newdata = as.matrix(test_treated))
+
+# Missing value imputation with the predicted values for LotFrontage
+dataset$LotFrontage[LF_index] <- LF_test$LotFrontagePred
+summary(dataset)
+
+# We can plot the predicted LotFrontage values against the LotArea values in LF_test to see if we observe the
+# correlation between the two variables.
+# Indeed, the predicted LotFrontage values seem to behave in similar fashion to the actual ones we observed above in the whole dataset
+LF_test %>%
+  ggplot(aes(x = log(LotArea), y = log(LotFrontagePred))) +
+  geom_point() +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
+  ggtitle("(Predicted) linear feet of street connected to property as a function of the lot size in square feet")
 
