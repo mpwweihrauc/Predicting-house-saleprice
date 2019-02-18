@@ -16,7 +16,7 @@ if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-
 if(!require(ranger)) install.packages("ranger", repos = "http://cran.us.r-project.org")
 if(!require(glmnet)) install.packages("glmnet", repos = "http://cran.us.r-project.org")
 if(!require(vip)) install.packages("vip", repos = "http://cran.us.r-project.org")
-if(!require(rpart)) install.packages("rpart", repos = "http://cran.us.r-project.org")
+
 
 
 # We import the training and testing data subsets (files from Kaggle)
