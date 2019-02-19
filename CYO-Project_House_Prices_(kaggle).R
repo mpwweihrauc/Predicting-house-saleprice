@@ -16,7 +16,7 @@ if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-
 if(!require(ranger)) install.packages("ranger", repos = "http://cran.us.r-project.org")
 if(!require(glmnet)) install.packages("glmnet", repos = "http://cran.us.r-project.org")
 if(!require(vip)) install.packages("vip", repos = "http://cran.us.r-project.org")
-
+if(!require(VIM)) install.packages("VIM", repos = "http://cran.us.r-project.org")
 
 
 # We import the training and testing data subsets (files from Kaggle)
@@ -772,6 +772,7 @@ grid.arrange(OverallQual_boxplot, OverallQual_scatterplot, nrow = 1)
 # It would be beneficial to bin OverallQual into a lower number of categories, by combining several levels into one.
 dataset$OverallQual <- as.numeric(dataset$OverallQual)
 
+# To combat underrepresented categories, we fuse two levels together.
 dataset$OverallQual[dataset$OverallQual %in% c(1:2)] <- "Poor"
 dataset$OverallQual[dataset$OverallQual %in% c(3:4)] <- "Fair"
 dataset$OverallQual[dataset$OverallQual %in% c(5:6)] <- "Average"
@@ -865,7 +866,7 @@ OverallCond_scatterplot <- dataset[train$Id, ] %>%
 
 grid.arrange(OverallCond_boxplot, OverallCond_scatterplot, nrow = 1)
 
-# We now have less categories for OverallCond, with more houses in each of them. A bad OverallCond can be idnicative of a lower sale price.
+# We now have less categories for OverallCond, with more houses in each of them. A bad OverallCond can be indicative of a lower sale price.
 
 
 
@@ -1270,6 +1271,404 @@ dataset[train$Id, ] %>%
 # Feature 29: Foundation
 # Foundation: Type of foundation
 #####
+
+# There are no missing values in Foundation.
+summary(dataset$Foundation)
+
+# Boxplot of Foundation vs. SalePrice.
+Foundation_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Foundation, y = SalePrice, color = Foundation)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of Foundation vs. SalePrice")
+
+Foundation_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Foundation, y = SalePrice, color = Foundation)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of Foundation vs. SalePrice")
+
+grid.arrange(Foundation_boxplot, Foundation_scatterplot, nrow = 1)
+
+# From the plots we can see that stone and wood Foundations are relatively rare. Poured concrete ("PConc") seems to
+# be the material of choice for houses with higher sale prices, while slab seems to be associated with lower values.
+
+
+#####
+# Feature 30: BsmtQual
+# BsmtQual: Evaluates the height of the basement
+#####
+
+# There are missing values in BsmtQual.
+summary(dataset$BsmtQual)
+
+# From the data description we know that "No Basement" was encoded as "NA" in this variable.
+# Also, there is no house with a "poor" BsmtQual.
+# We will therefore replace "NA" with "None" and fix the factor levels accordingly.
+
+dataset$BsmtQual <- as.character(dataset$BsmtQual)
+dataset$BsmtQual <- str_replace_na(dataset$BsmtQual, replacement = "None")
+dataset$BsmtQual <- factor(dataset$BsmtQual, levels = c("None", "Fa", "TA", "Gd", "Ex"))
+
+
+# Boxplot of BsmtQual vs. SalePrice.
+BsmtQual_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtQual, y = SalePrice, color = BsmtQual)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BsmtQual vs. SalePrice")
+
+BsmtQual_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtQual, y = SalePrice, color = BsmtQual)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BsmtQual vs. SalePrice")
+
+grid.arrange(BsmtQual_boxplot, BsmtQual_scatterplot, nrow = 1)
+
+
+# From the plots we can see that houses with no basement or a basement with only "fair" quality come with
+# much lower sale prices. This might also be because a higher BsmtQual indicates a greater height of the basement, which 
+# might be indicative of a larger house in general.
+
+# We plot BsmtQual vs. GrLivArea, as an indication of house size. There seems to be a slight relationship.
+dataset %>%
+  ggplot(aes(x = BsmtQual, y = GrLivArea, color = BsmtQual)) +
+  geom_boxplot() +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BsmtQual vs. GrLivArea")
+
+
+#####
+# Feature 31: BsmtCond
+# BsmtCond: Evaluates the general condition of the basement
+#####
+
+# There are missing values in BsmtCond.
+# From the data description we know that "No Basement" was encoded as "NA" in this variable.
+# Also, not a single house has an "excellent" basement condition.
+summary(dataset$BsmtCond)
+
+
+# We will therefore replace "NA" with "None" and fix the factor levels accordingly.
+
+dataset$BsmtCond <- as.character(dataset$BsmtCond)
+dataset$BsmtCond <- str_replace_na(dataset$BsmtCond, replacement = "None")
+dataset$BsmtCond <- factor(dataset$BsmtCond, levels = c("None", "Po", "Fa", "TA", "Gd"))
+
+
+# Boxplot of BsmtCond vs. SalePrice.
+BsmtCond_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtCond, y = SalePrice, color = BsmtCond)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BsmtCond vs. SalePrice")
+
+BsmtCond_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtCond, y = SalePrice, color = BsmtCond)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BsmtCond vs. SalePrice")
+
+grid.arrange(BsmtCond_boxplot, BsmtCond_scatterplot, nrow = 1)
+
+# Basement condition seems to be a good indicator of sale price. Although there are only a few houses
+# with a really poor basement condition, all of these houses have exceptionally low sale prices.
+# Overall, a typical or good basement condition is important for a houses sale price.
+
+
+#####
+# Feature 32: BsmtExposure
+# BsmtExposure: Refers to walkout or garden level walls
+#####
+
+# There are missing values in BsmtExposure.
+# From the data description we know that "No Basement" was encoded as "NA" in this variable.
+# "No exposure" is encoded as "No"
+summary(dataset$BsmtExposure)
+
+# We will therefore replace "NA" with "None" and fix the factor levels accordingly.
+
+dataset$BsmtExposure <- as.character(dataset$BsmtExposure)
+dataset$BsmtExposure <- str_replace_na(dataset$BsmtExposure, replacement = "None")
+dataset$BsmtExposure <- factor(dataset$BsmtExposure, levels = c("None", "No", "Mn", "Av", "Gd"))
+
+
+# Boxplot of BsmtExposure vs. SalePrice.
+BsmtExposure_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtExposure, y = SalePrice, color = BsmtExposure)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BsmtExposure vs. SalePrice")
+
+BsmtExposure_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtExposure, y = SalePrice, color = BsmtExposure)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BsmtExposure vs. SalePrice")
+
+grid.arrange(BsmtExposure_boxplot, BsmtExposure_scatterplot, nrow = 1)
+
+# From the plots we can see that greater basement exposure correlates slightly with larger sale prices.
+# Houses with no basement ("None") have the lowest sale prices.
+
+
+
+#####
+# Feature 33: BsmtFinType1
+# BsmtFinType1: Rating of basement finished area
+#####
+
+# There are missing values in BsmtExposure.
+# From the data description we know that "No Basement" was encoded as "NA" in this variable.
+summary(dataset$BsmtFinType1)
+
+# We will therefore replace "NA" with "None" and fix the factor levels accordingly.
+dataset$BsmtFinType1 <- as.character(dataset$BsmtFinType1)
+dataset$BsmtFinType1 <- str_replace_na(dataset$BsmtFinType1, replacement = "None")
+dataset$BsmtFinType1 <- factor(dataset$BsmtFinType1, levels = c("None", "Unf", "LwQ", "Rec", "BLQ", "ALQ", "GLQ"))
+
+# Boxplot of BsmtFinType1 vs. SalePrice.
+BsmtFinType1_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtFinType1, y = SalePrice, color = BsmtFinType1)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BsmtFinType1 vs. SalePrice")
+
+BsmtFinType1_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtFinType1, y = SalePrice, color = BsmtFinType1)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BsmtFinType1 vs. SalePrice")
+
+grid.arrange(BsmtFinType1_boxplot, BsmtFinType1_scatterplot, nrow = 1)
+
+
+# Houses with unfinished or good quality living quarter type of finish come with higher sale prices.
+
+#####
+# Feature 34: BsmtFinType2
+# BsmtFinType2: Rating of basement finished area (if multiple types)
+#####
+
+# There are missing values in BsmtExposure.
+# From the data description we know that "No Basement" was encoded as "NA" in this variable.
+summary(dataset$BsmtFinType2)
+
+# We will therefore replace "NA" with "None" and fix the factor levels accordingly.
+dataset$BsmtFinType2 <- as.character(dataset$BsmtFinType2)
+dataset$BsmtFinType2 <- str_replace_na(dataset$BsmtFinType2, replacement = "None")
+dataset$BsmtFinType2 <- factor(dataset$BsmtFinType2, levels = c("None", "Unf", "LwQ", "Rec", "BLQ", "ALQ", "GLQ"))
+
+# Boxplot of BsmtFinType2 vs. SalePrice.
+BsmtFinType2_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtFinType2, y = SalePrice, color = BsmtFinType2)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BsmtFinType2 vs. SalePrice")
+
+BsmtFinType2_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtFinType2, y = SalePrice, color = BsmtFinType2)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of BsmtFinType2 vs. SalePrice")
+
+grid.arrange(BsmtFinType2_boxplot, BsmtFinType2_scatterplot, nrow = 1)
+
+
+# Houses with unfinished type of finish come with higher sale prices.
+
+
+#####
+# Basement square feet variables
+#####
+
+# We will deal with all basement-area related variables together.
+
+
+# We replace the missing Bsmt-values of house 2121 with 0, as this house has no basement
+dataset[2121, ] # This house has no basement
+dataset$BsmtFinSF1[2121] <- 0
+dataset$BsmtFinSF2[2121] <- 0
+dataset$BsmtUnfSF[2121] <- 0
+dataset$TotalBsmtSF[2121] <- 0
+
+# We replace the remaining NAs in BsmtFullBath and BsmtHalfBath with 0 as the respective houses have no basement.
+dataset[which(is.na(dataset$BsmtFullBath)), ]
+
+dataset$BsmtFullBath[is.na(dataset$BsmtFullBath)] <- 0
+dataset$BsmtHalfBath[is.na(dataset$BsmtHalfBath)] <- 0
+
+
+# What is the correlation between TotalBsmtSF and the individual measurements of basement square feet?
+cor(dataset$TotalBsmtSF, (dataset$BsmtFinSF1 + dataset$BsmtFinSF2 + dataset$BsmtUnfSF)) # It is exactly 1.
+
+# Correlation between the variables and SalePrice: They are all mostly weak individually., while TotalBsmtSF is highly correlated.
+cor(dataset[train$Id, ]$TotalBsmtSF, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtFinSF1, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtFinSF2, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtUnfSF, dataset[train$Id, ]$SalePrice) # Relatively strong correlation of unfinished basement with sale price
+
+# The individual basement area variables seem to be redundant, but we observed that having an unfinished basement
+# can be indiciative of a higher sale price earlier (e.g. relatively large correlation between BsmtUnfSF and SalePrice). We therefore leave these variables alone.
+
+#####
+# Bathroom variables
+#####
+
+# The number of total bathrooms can be indicative of a houses size.
+# In the dataset there are 4 different variables describing bathrooms.
+# It could be useful to combine these into a single feature.
+
+# While each bathroom variable individually has little influence on SalePrice, combined they might become a stronger predictor.
+# We will value different types of bath according to their SalePrice correlation ratio compared to FullBaths.
+cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice) # Full bathrooms have the strongest correlation to SalePrice
+cor(dataset[train$Id, ]$HalfBath, dataset[train$Id, ]$SalePrice) # Half baths are much less valued, about half as much
+(FullToHalfBathRatio <- cor(dataset[train$Id, ]$HalfBath, dataset[train$Id, ]$SalePrice) / cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice)) # We calculate the ratio of the correlations of Full and Half baths to SalePrice to use as a weighting factor below
+
+# Basement full and especially half baths have weaker correlation with SalePrice
+cor(dataset[train$Id, ]$BsmtFullBath, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtHalfBath, dataset[train$Id, ]$SalePrice)
+
+# Weighting factor for FullBath to BsmtFullBath. A basement full bath receives a weighting factor of 0.3971685 as calculated below.
+(FullToBsmtFullBathRatio <- cor(dataset[train$Id, ]$BsmtFullBath, dataset[train$Id, ]$SalePrice) / cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice))
+
+# Weighting factor for FullBath to BsmtHalfBath. This actualy returns a negative value! We rather remove basement half baths from the calculations.
+(FullToBsmtHalfBathRatio <- cor(dataset[train$Id, ]$BsmtHalfBath, dataset[train$Id, ]$SalePrice) / cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice))
+
+
+# Only very few houses even have BsmtHalfBaths
+summary(dataset$BsmtHalfBath)
+
+# We will create a variable "TotalBaths", that sums up the various types of baths into one variable, taking into consideration the different correlations to SalePrice for full and half baths.
+# We don't add BsmtHalfBaths, as their correlation with SalePrice is very low/negative and only very few houses have any.
+dataset$TotalBaths <- dataset$FullBath + (dataset$BsmtFullBath * FullToBsmtFullBathRatio) + (dataset$HalfBath * FullToHalfBathRatio)
+cor(dataset[train$Id, ]$TotalBaths, dataset[train$Id, ]$SalePrice) # Correlation of TotalBaths is higher than of just FullBaths
+
+# The new TotalBaths variable has a correlation of almost 70% with SalePrice.
+
+# We can remove the previous bath variables
+dataset <- subset(dataset, select = -c(FullBath, HalfBath, BsmtFullBath, BsmtHalfBath))
+
+
+# Scatterplot of engineered TotalBaths vs. SalePrice.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = TotalBaths, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(0, 5, 0.25)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of engineered TotalBaths vs. SalePrice") +
+  geom_smooth(method = "lm")
+
+
+# The combination of 4 different bath variables, "TotalBaths" has a strong relationship to sale price, as the total number of bathrooms is in itself indicative of a larger house.
+
+
+
+#####
+# Heating: Type of heating
+#####
+
+# There are no missing values in Heating, but there is only a single house with "Floor" and 2 houses with "OthW" heating.
+summary(dataset$Heating)
+
+# Boxplot of Heating vs. SalePrice.
+Heating_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Heating, y = SalePrice, color = Heating)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of Heating vs. SalePrice")
+
+Heating_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Heating, y = SalePrice, color = Heating)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of Heating vs. SalePrice")
+
+grid.arrange(Heating_boxplot, Heating_scatterplot, nrow = 1)
+
+
+# From the plots we can see that the house with "floor furnace" heating has a low sale price and that basically any heating other than "GasA" and "GasW"
+# appears to be associated with lower sale price. Most categories are woefully underrepresented, however.
+
+
+#####
+# HeatingQC: Heating quality and condition
+#####
+
+# There are no missing values in HeatingQC.
+summary(dataset$HeatingQC)
+
+# Boxplot of HeatingQC vs. SalePrice.
+HeatingQC_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = HeatingQC, y = SalePrice, color = HeatingQC)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of HeatingQC vs. SalePrice")
+
+HeatingQC_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = HeatingQC, y = SalePrice, color = HeatingQC)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of HeatingQC vs. SalePrice")
+
+grid.arrange(HeatingQC_boxplot, HeatingQC_scatterplot, nrow = 1)
+
+# From the plots we an see that very few houses have poor quality heating and that an excellent quality of heating 
+# is associated with a higher sale price. The quality of the heating seems to be more important than its type.
+
+
+
+#####
+# CentralAir: Central air conditioning
+#####
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
