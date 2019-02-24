@@ -2537,8 +2537,7 @@ dataset[train$Id, ] %>%
   ggtitle("Distribution of SalePrice over YrSold")
 
 
-# As MoSold and YrSold have no predictive power over SalePrice, we drop them.
-dataset <- subset(dataset, select = -c(MoSold, YrSold))
+
 
 #####
 # SaleType: Type of sale
@@ -2627,12 +2626,6 @@ dataset[train$Id, ] %>%
 # We log-transform SalePrice and indeed, it looks much more normal now.
 dataset$SalePrice <- log1p(dataset$SalePrice)
 
-
-
-
-
-
-  
 
 
 ### All missing values have been dealt with and we can once again separate `dataset` into train and test ###
@@ -2734,12 +2727,12 @@ str(test_set_treated)
 
 
 cv <- xgb.cv(params = list(objective = "reg:linear", 
-                           eta = 0.05,
+                           eta = 0.2,
                            max_depth = seq(3, 6, 1)),
               data = as.matrix(train_set_treated),  # xgb.cv only takes a matrix of the treated, all-numerical input data
              label = train_set$SalePrice, # Outcome from untreated data
-             nrounds = 3000, # We go up to 200 rounds of fitting models on the remaining residuals
-             nfold = 5, # We use 5 folds for cross-validation
+             nrounds = 1000, # We go up to 200 rounds of fitting models on the remaining residuals
+             nfold = 4, # We use 5 folds for cross-validation
              early_stopping_rounds = 20,
              verbose = 0)    # silent
 
@@ -2784,50 +2777,50 @@ model_rmses %>% knitr::kable()
 # Hyperparameter tuning with Caret.
 #####
 
+# We will evaluate different values for the hyperparameters of the "xgbTree" algorithm.
+# As expansive grid searches become computationally very expensive the more parameters are evaluated at the same time (easily into the thousands of models),
+# we will instead evaluate no more than 2 parameters per tuning round.
 
 
 #####
-# 1st set of hyperparameter tuning parameters for learning rate and maximum tree depth of XGBoost
+# xgbTree hyperparameter testing
 #####
 
-# Please note that the generated models are not 100% comparable as the train control of cross-validation changes every time (not exactly identical folds).
-
-
-# We test different values for maximum tree depth and learning rate. 
-# Learning rate can easily become too high, while too deep trees can make the model too complex and overfit.
-# We keep the other parameters at their default for now.
+# We define a tune grid with selected ranges of hyperparameters to tune.
+# The range of parameters was empirically determined and later shortened to reduce grid search computational time.
 tuneGrid <- expand.grid(
-  nrounds = seq(50, 500, 50),
-  max_depth = seq(3, 7, 1),
-  eta = 0.1,
+  nrounds = seq(200, 1500, 100),
+  max_depth = c(2, 4, 6, 8),
+  eta = 0.025,
   gamma = 0,
   colsample_bytree = 0.8,
-  min_child_weight = seq(1, 10, 2),
+  min_child_weight = c(1, 2, 3, 4, 5, 6),
   subsample = 0.8
 )
 
-# Train control for caret train() function.
+# We define a custom train control for the caret train() function.
 train_control <- trainControl(
   method = "cv", 
-  number = 5,
+  number = 10,
   verboseIter = TRUE
 )
 
-# Run the model with above parameters.
+# We run the model with above parameters. Additionally, we add pre-processing which removes near-zero variance estimators, centers and scales the data.
 xgb_1st_tuning <- train(
   x = train_set_treated,
   y = train_set$SalePrice,
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
-  verbose = TRUE
+  verbose = TRUE,
+  preProcess = c("nzv", "center", "scale")
 )
 
 
 # # Visualization of the 1st tuning round and the most important features
 ggplot(xgb_1st_tuning)
 
-vip(xgb_1st_tuning, num_features = 20) # We take a look at the most important features
+vip(xgb_1st_tuning, num_features = 10) # We take a look at the most important features
 
 # We can select the best tuning values from the model like this
 xgb_1st_tuning$bestTune
@@ -2842,47 +2835,46 @@ model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_4_xgb_1st_tune",
 model_rmses %>% knitr::kable()
 
 
-#####
-#####
 
 
-#####
-# 2nd set of hyperparameter tuning parameters
-#####
+### 2nd tune ###
 
-# We evaluate colsample_bytree.
+# We define a tune grid with selected ranges of hyperparameters to tune.
+# The range of parameters was empirically determined and later shortened to reduce grid search computational time.
 tuneGrid <- expand.grid(
   nrounds = seq(200, 1000, 100),
-  max_depth = 4,
+  max_depth = 4
   eta = 0.05,
   gamma = 0,
-  colsample_bytree = seq(0.5, 1, 0.1),
-  min_child_weight = 1,
-  subsample = 1
+  colsample_bytree = c(0.4, 0.6, 0.8),
+  min_child_weight = 2
+  subsample = c(0.4, 0.6, 0.8)
 )
 
-# Train control for caret train() function. We use 5-fold cross-validation.
-train_control <- caret::trainControl(
-  method = "cv", 
-  number = 5,
+# We define a custom train control for the caret train() function.
+train_control <- trainControl(
+  method = "repeatedcv", 
+  number = 3,
+  repeats = 3,
   verboseIter = TRUE
 )
 
-# Run the model with above parameters.
+# We run the model with above parameters. Additionally, we add pre-processing which removes near-zero variance estimators, centers and scales the data.
 xgb_2nd_tuning <- train(
   x = train_set_treated,
   y = train_set$SalePrice,
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
-  verbose = TRUE
+  verbose = TRUE,
+  preProcess = c("nzv", "center", "scale")
 )
 
 
 # # Visualization of the 2nd tuning round and the most important features
 ggplot(xgb_2nd_tuning)
 
-vip(xgb_2nd_tuning, num_features = 20) # We take a look at the most important features
+vip(xgb_2nd_tuning, num_features = 10) # We take a look at the most important features
 
 # We can select the best tuning values from the model like this
 xgb_2nd_tuning$bestTune
@@ -2896,106 +2888,6 @@ model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_5_xgb_2nd_tune",
 
 model_rmses %>% knitr::kable()
 
-
-
-#####
-# 3rd set of hyperparameter tuning parameters
-#####
-
-# We evaluate subsample values.
-tuneGrid <- expand.grid(
-  nrounds = seq(200, 1000, 100),
-  max_depth = 4,
-  eta = 0.05,
-  gamma = 0,
-  colsample_bytree = 0.2,
-  min_child_weight = 1,
-  subsample = seq(0.1, 1, 0.1)
-)
-
-# Train control for caret train() function. We use 5-fold cross-validation.
-train_control <- caret::trainControl(
-  method = "cv", 
-  number = 5,
-  verboseIter = TRUE
-)
-
-# Run the model with above parameters.
-xgb_3rd_tuning <- train(
-  x = train_set_treated,
-  y = train_set$SalePrice,
-  trControl = train_control,
-  tuneGrid = tuneGrid,
-  method = "xgbTree",
-  verbose = TRUE
-)
-
-
-# Visualization of the 3rd tuning round and the most important features
-ggplot(xgb_3rd_tuning)
-
-vip(xgb_3rd_tuning, num_features = 20) # We take a look at the most important features
-
-# We can select the best tuning values from the model like this
-xgb_3rd_tuning$bestTune
-
-# We predict on the test_set and record the "out-of-bag" RMSE
-xgb_3rd_tuning_pred <- predict(xgb_3rd_tuning, test_set_treated)
-
-xgb_3rd_tuning_rmse <- RMSE(xgb_3rd_tuning_pred, test_set$SalePrice)
-
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_6_xgb_3rd_tune", RMSE = xgb_3rd_tuning_rmse))
-
-model_rmses %>% knitr::kable()
-
-
-
-#####
-# 4th set of hyperparameter tuning parameters
-#####
-
-# We evaluate subsample.
-tuneGrid <- expand.grid(
-  nrounds = seq(100, 1000, 100),
-  max_depth = 4,
-  eta = 0.05,
-  gamma = 0,
-  colsample_bytree = 0.2,
-  min_child_weight = 1,
-  subsample = seq(0.1, 1, 0.1)
-)
-
-# Train control for caret train() function. We use 5-fold cross-validation.
-train_control <- caret::trainControl(
-  method = "cv", 
-  number = 5,
-  verboseIter = TRUE
-)
-
-# Run the model with above parameters.
-xgb_final_tuning <- train(
-  x = train_set_treated,
-  y = train_set$SalePrice,
-  trControl = train_control,
-  tuneGrid = tuneGrid,
-  method = "xgbTree",
-  verbose = TRUE
-)
-
-
-# We plot the final tuning
-ggplot(xgb_final_tuning)
-
-# We can select the best tuning values from the model like this
-xgb_final_tuning$bestTune
-
-# We record the RMSE of the best tuned model
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_7_xgb_final_tune", RMSE = min(xgb_final_tuning$results$RMSE)))
-
-model_rmses %>% knitr::kable()
-
-### Prediction on test_set with the final tune XGB model
-xgb_final_tuning_pred <- exp(predict(xgb_final_tuning, as.matrix(test_set_treated)))
 
 
 
@@ -3020,19 +2912,20 @@ test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
 
 # We set the final tuning parameters and test a larger nrounds
 tuneGrid <- expand.grid(
-  nrounds = seq(100, 3000, 100),
-  max_depth = 3,
-  eta = 0.05,
+  nrounds = seq(200, 1500, 100),
+  max_depth = c(2, 3, 4),
+  eta = 0.025,
   gamma = 0,
-  colsample_bytree = 0.5,
-  min_child_weight = 1,
-  subsample = 0.75
+  colsample_bytree = c(0.4, 0.6, 0.8),
+  min_child_weight = c(1, 2, 3),
+  subsample = c(0.4, 0.6, 0.8)
 )
 
-# Train control for caret train() function. We use 5-fold cross-validation.
+# Train control for caret train() function. We use 3-fold cross-validation.
 train_control <- caret::trainControl(
-  method = "cv", 
-  number = 5,
+  method = "repeatedcv", 
+  number = 3,
+  repeats = 3,
   verboseIter = TRUE
 )
 
@@ -3043,8 +2936,18 @@ xgb_final_model <- train(
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
-  verbose = TRUE
+  verbose = TRUE,
+  preProcess = c("nzv", "center", "scale")
 )
+
+# Visualization of the final fitted model
+ggplot(xgb_final_model)
+
+vip(xgb_final_model, num_features = 10) # We take a look at the most important features
+
+# We can select the best tuning values from the model like this
+xgb_final_model$bestTune
+
 
 xgb_final_model_pred <- exp(predict(xgb_final_model, as.matrix(test_treated)))
 
@@ -3173,127 +3076,5 @@ model_rmses %>% knitr::kable()
 
 
 
-# We fit the final Glmnet model #
 
-
-
-
-
-
-
-my_ensemble <- data.frame(Id = test$Id, SalePrice = (xgb_final_tuning_pred + exp(ranger_model2_pred))/2)
-
-write.table(my_ensemble, file = "submission_ensemble_2.csv", col.names = TRUE, row.names = FALSE, sep = ",")
-
-
-
-
-
-
-
-
-
-
-
-# Old LotFrontage prediction
-#########################################################################################################
-# Dealing with missing values in LotFrontage, which are the linear feet of street connected to property.
-# LotFrontage might be closely correlated to the LotArea, the lot size in square feet.
-
-# We plot log-transformed LotArea against LotFrontage. Indeed, there seems to be a positive correlation
-# between LotFrontage and LotArea as shown by the fitted general additive model explaining 
-# LotFrontage as a smooth function of LotArea. NAs are automatically removed from the plot.
-dataset %>%
-  ggplot(aes(x = log(LotArea), y = log(LotFrontage))) +
-  geom_point() +
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
-  ggtitle("Linear feet of street connected to property as a function of the lot size in square feet") +
-  theme_bw()
-
-# We will apply a gradient boosting machine model to predict the missing LotFrontage values.
-# We can assume that other features might also be informative about LotFrontage, so we include
-# them in a gradient boosting machine model below (xgboost package; and vtreat package for data preparation)
-
-
-# We separate "dataset" into "LF" test and train by filtering out the rows with missing LotFrontage
-LF_index <- which(is.na(dataset$LotFrontage))
-LF_train <- dataset[-LF_index, ]
-LF_test <- dataset[LF_index, ]
-
-
-
-# We select all variables that might influence LotFrontage according to our intuition and the data description
-variables <- c("LotArea", "Street", "LotShape", "LandContour", "LotConfig", "LandSlope",
-               "Neighborhood", "BldgType", "Condition1", "Condition2")
-
-# The vtreat function designTreatmentsZ helps encode all variables numerically
-treatment_plan <- designTreatmentsZ(LF_train, variables) # Devise a treatment plan for the variables
-(newvars <- treatment_plan %>%
-    use_series(scoreFrame) %>%  # use_series() works like a $, but within pipes, so we can access scoreFrame      
-    filter(code %in% c("clean", "lev")) %>%  # We select only the rows we care about
-    use_series(varName))           # We get the varName column
-
-# The prepare() function prepares our data subsets according to the treatment plan
-# we devised above and encodes all relevant variables "newvars" numerically
-train_treated <- prepare(treatment_plan, LF_train,  varRestriction = newvars)
-test_treated <- prepare(treatment_plan, LF_test,  varRestriction = newvars)
-
-# We can now see the numerical encoding of all variables thanks to treatment and preparation above
-str(train_treated)
-str(test_treated)
-
-
-########### Tuning for LotFrontage ###########
-
-# Define a grid of tuning parameters for the caret::train() function
-# We select some empirically optimized parameters
-grid_default <- expand.grid(
-  nrounds = seq(from = 100, to = 800, 50), 
-  max_depth = 4,
-  eta = 0.05,
-  gamma = 0,
-  colsample_bytree = 0.75, 
-  min_child_weight = 1, 
-  subsample = 1 
-)
-
-# Train control for caret train() function; we use cross-validation to estimate out-of-sample error
-train_control <- caret::trainControl(
-  method = "repeatedcv", # We use 5-fold cross-validation
-  number = 3,
-  repeats = 3,
-  verboseIter = TRUE,
-  allowParallel = TRUE
-)
-
-# Train the xgboost model for LotFrontage
-xgb_LF_tuned <- train(
-  x = train_treated,
-  y = LF_train$LotFrontage, # The outcome variable comes from the pre-treated data
-  trControl = train_control,
-  tuneGrid = grid_default,
-  method = "xgbTree",
-  verboseIter = TRUE
-)
-
-xgb_LF_tuned$bestTune # We take a look at the best tuning values
-
-ggplot(xgb_LF_tuned) # We use our defined function to visualize the tuning effects
-
-
-# We predict LotFrontage
-LF_test$LotFrontagePred<- predict(xgb_LF_tuned, newdata = as.matrix(test_treated))
-
-# Missing value imputation with the predicted values for LotFrontage
-dataset$LotFrontage[LF_index] <- LF_test$LotFrontagePred
-summary(dataset)
-
-# We can plot the predicted LotFrontage values against the LotArea values in LF_test to see if we observe the
-# correlation between the two variables.
-# Indeed, the predicted LotFrontage values seem to behave in similar fashion to the actual ones we observed above in the whole dataset
-LF_test %>%
-  ggplot(aes(x = log(LotArea), y = log(LotFrontagePred))) +
-  geom_point() +
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs")) +
-  ggtitle("(Predicted) linear feet of street connected to property as a function of the lot size in square feet")
 
