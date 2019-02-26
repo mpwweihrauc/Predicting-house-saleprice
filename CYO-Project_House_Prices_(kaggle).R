@@ -11,12 +11,15 @@ if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.
 if(!require(xgboost)) install.packages("xgboost", repos = "http://cran.us.r-project.org")
 if(!require(magrittr)) install.packages("magrittr", repos = "http://cran.us.r-project.org")
 if(!require(vtreat)) install.packages("vtreat", repos = "http://cran.us.r-project.org")
-if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-project.org")
 if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-project.org")
-if(!require(ranger)) install.packages("ranger", repos = "http://cran.us.r-project.org")
-if(!require(glmnet)) install.packages("glmnet", repos = "http://cran.us.r-project.org")
 if(!require(vip)) install.packages("vip", repos = "http://cran.us.r-project.org")
 if(!require(VIM)) install.packages("VIM", repos = "http://cran.us.r-project.org")
+if(!require(doParallel)) install.packages("doParallel", repos = "http://cran.us.r-project.org")
+
+# Parallelization.
+cls <- makeCluster(detectCores(logical = FALSE))
+registerDoParallel(cls)
+on.exit(stopCluster(cl))
 
 
 # We import the training and testing data subsets (files from Kaggle)
@@ -2480,7 +2483,6 @@ dataset[train$Id, ] %>%
   theme(legend.position = "none") +
   ggtitle("Scatterplot of MiscVal vs. SalePrice")
 
-grid.arrange(MiscVal_boxplot, MiscVal_scatterplot, nrow = 1)
 
 # MiscVal has no predictive power for sale price and we will drop it.
 
@@ -2536,7 +2538,8 @@ dataset[train$Id, ] %>%
   xlab("Year") +
   ggtitle("Distribution of SalePrice over YrSold")
 
-
+# As Month and Year sold don't predict sale price much we remove them from the dataset.
+dataset <- subset(dataset, select = -c(MoSold, YrSold))
 
 
 #####
@@ -2727,13 +2730,12 @@ str(test_set_treated)
 
 
 cv <- xgb.cv(params = list(objective = "reg:linear", 
-                           eta = 0.2,
-                           max_depth = seq(3, 6, 1)),
+                           eta = 0.05),
               data = as.matrix(train_set_treated),  # xgb.cv only takes a matrix of the treated, all-numerical input data
              label = train_set$SalePrice, # Outcome from untreated data
-             nrounds = 1000, # We go up to 200 rounds of fitting models on the remaining residuals
-             nfold = 4, # We use 5 folds for cross-validation
-             early_stopping_rounds = 20,
+             nrounds = 2000, # We go up to 200 rounds of fitting models on the remaining residuals
+             nfold = 5, # We use 5 folds for cross-validation
+             early_stopping_rounds = 50,
              verbose = 0)    # silent
 
 # While the RMSE may continue to decrease on more and more rounds if iteration, the test RMSE usually doesn't.
@@ -2755,8 +2757,8 @@ SalePrice_model_xgb <- xgboost(data = as.matrix(train_set_treated), # Treated tr
                                  label = train_set$SalePrice,  # Column of outcomes from original data
                                  nrounds = ntrees,       # number of trees to build, which we determined via cross-validation
                                  objective = "reg:linear", # objective
-                                 eta = 0.3, # The learning rate; Closer to 0 is slower, but less prone to overfitting; Closer to 1 is faster, but more likely to overfit
-                                 max_depth = 6,
+                                 eta = 0.05, # The learning rate; Closer to 0 is slower, but less prone to overfitting; Closer to 1 is faster, but more likely to overfit
+                                 max_depth = 3,
                                  verbose = 0)  # silent
 
 # Now we can predict SalePrice in the test_set with the xgb-model
@@ -2789,20 +2791,22 @@ model_rmses %>% knitr::kable()
 # We define a tune grid with selected ranges of hyperparameters to tune.
 # The range of parameters was empirically determined and later shortened to reduce grid search computational time.
 tuneGrid <- expand.grid(
-  nrounds = seq(200, 1500, 100),
-  max_depth = c(2, 4, 6, 8),
-  eta = 0.025,
+  nrounds = seq(100, 1000, 50),
+  max_depth = c(2, 3, 4, 5, 6, 8),
+  eta = 0.05,
   gamma = 0,
   colsample_bytree = 0.8,
-  min_child_weight = c(1, 2, 3, 4, 5, 6),
+  min_child_weight = 2,
   subsample = 0.8
 )
 
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
-  method = "cv", 
-  number = 10,
-  verboseIter = TRUE
+  method = "repeatedcv", 
+  number = 3,
+  repeats = 3,
+  verboseIter = FALSE,
+  allowParallel = TRUE # WARNING: Your CPU might run hot with active parallelization!
 )
 
 # We run the model with above parameters. Additionally, we add pre-processing which removes near-zero variance estimators, centers and scales the data.
@@ -2812,13 +2816,13 @@ xgb_1st_tuning <- train(
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
-  verbose = TRUE,
+  verbose = FALSE,
   preProcess = c("nzv", "center", "scale")
 )
 
 
 # # Visualization of the 1st tuning round and the most important features
-ggplot(xgb_1st_tuning)
+ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.13, 0.17))
 
 vip(xgb_1st_tuning, num_features = 10) # We take a look at the most important features
 
@@ -2842,13 +2846,13 @@ model_rmses %>% knitr::kable()
 # We define a tune grid with selected ranges of hyperparameters to tune.
 # The range of parameters was empirically determined and later shortened to reduce grid search computational time.
 tuneGrid <- expand.grid(
-  nrounds = seq(200, 1000, 100),
-  max_depth = 4
+  nrounds = seq(100, 1000, 50),
+  max_depth = 4,
   eta = 0.05,
   gamma = 0,
-  colsample_bytree = c(0.4, 0.6, 0.8),
-  min_child_weight = 2
-  subsample = c(0.4, 0.6, 0.8)
+  colsample_bytree = 0.8,
+  min_child_weight = seq(1, 9, 2),
+  subsample = 0.8
 )
 
 # We define a custom train control for the caret train() function.
@@ -2856,7 +2860,8 @@ train_control <- trainControl(
   method = "repeatedcv", 
   number = 3,
   repeats = 3,
-  verboseIter = TRUE
+  verboseIter = FALSE,
+  allowParallel = TRUE # WARNING: Your CPU might run hot with active parallelization!
 )
 
 # We run the model with above parameters. Additionally, we add pre-processing which removes near-zero variance estimators, centers and scales the data.
@@ -2872,7 +2877,7 @@ xgb_2nd_tuning <- train(
 
 
 # # Visualization of the 2nd tuning round and the most important features
-ggplot(xgb_2nd_tuning)
+ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.13, 0.17))
 
 vip(xgb_2nd_tuning, num_features = 10) # We take a look at the most important features
 
@@ -2885,6 +2890,59 @@ xgb_2nd_tuning_pred <- predict(xgb_2nd_tuning, test_set_treated)
 xgb_2nd_tuning_rmse <- RMSE(xgb_2nd_tuning_pred, test_set$SalePrice)
 
 model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_5_xgb_2nd_tune", RMSE = xgb_2nd_tuning_rmse))
+
+model_rmses %>% knitr::kable()
+
+
+### 3rd tune ###
+
+# We define a tune grid with selected ranges of hyperparameters to tune.
+# The range of parameters was empirically determined and later shortened to reduce grid search computational time.
+tuneGrid <- expand.grid(
+  nrounds = seq(100, 1000, 50),
+  max_depth = 4,
+  eta = 0.05,
+  gamma = 0,
+  colsample_bytree = seq(0.4, 1, 0.2),
+  min_child_weight = 3,
+  subsample = seq(0.4, 1, 0.2)
+)
+
+# We define a custom train control for the caret train() function.
+train_control <- trainControl(
+  method = "repeatedcv", 
+  number = 3,
+  repeats = 3,
+  verboseIter = FALSE,
+  allowParallel = TRUE # WARNING: Your CPU might run hot with active parallelization!
+)
+
+# We run the model with above parameters. Additionally, we add pre-processing which removes near-zero variance estimators, centers and scales the data.
+xgb_3rd_tuning <- train(
+  x = train_set_treated,
+  y = train_set$SalePrice,
+  trControl = train_control,
+  tuneGrid = tuneGrid,
+  method = "xgbTree",
+  verbose = TRUE,
+  preProcess = c("nzv", "center", "scale")
+)
+
+
+# # Visualization of the 3rd tuning round and the most important features
+ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.13, 0.17))
+
+vip(xgb_3rd_tuning, num_features = 10) # We take a look at the most important features
+
+# We can select the best tuning values from the model like this
+xgb_3rd_tuning$bestTune
+
+# We predict on the test_set and record the "out-of-bag" RMSE
+xgb_3rd_tuning_pred <- predict(xgb_3rd_tuning, test_set_treated)
+
+xgb_3rd_tuning_rmse <- RMSE(xgb_3rd_tuning_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_6_xgb_3rd_tune", RMSE = xgb_3rd_tuning_rmse))
 
 model_rmses %>% knitr::kable()
 
@@ -2910,23 +2968,24 @@ test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
 
 
 
-# We set the final tuning parameters and test a larger nrounds
+# We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(200, 1500, 100),
-  max_depth = c(2, 3, 4),
-  eta = 0.025,
+  nrounds = seq(1000, 2000, 100),
+  max_depth = 4,
+  eta = 0.05,
   gamma = 0,
-  colsample_bytree = c(0.4, 0.6, 0.8),
-  min_child_weight = c(1, 2, 3),
-  subsample = c(0.4, 0.6, 0.8)
+  colsample_bytree = 1,
+  min_child_weight = 3,
+  subsample = 0.6
 )
 
-# Train control for caret train() function. We use 3-fold cross-validation.
+# Train control for caret train() function. We use k-fold cross-validation.
 train_control <- caret::trainControl(
   method = "repeatedcv", 
   number = 3,
   repeats = 3,
-  verboseIter = TRUE
+  verboseIter = FALSE,
+  allowParallel = TRUE
 )
 
 # Run the model with above parameters.
@@ -2936,16 +2995,19 @@ xgb_final_model <- train(
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
-  verbose = TRUE,
+  verbose = FALSE,
   preProcess = c("nzv", "center", "scale")
 )
 
 # Visualization of the final fitted model
-ggplot(xgb_final_model)
+ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.125, 0.17))
+
+# Lowest RMSE obtained in cross-validation.
+min(xgb_final_model$results$RMSE)
 
 vip(xgb_final_model, num_features = 10) # We take a look at the most important features
 
-# We can select the best tuning values from the model like this
+# We can select the final tuning values from the model like this
 xgb_final_model$bestTune
 
 
@@ -2958,123 +3020,27 @@ write.table(my_submission, file = "submission.csv", col.names = TRUE, row.names 
 
 
 
+### GLMNET model ###
 
-########################
-# Ranger random forest model
-########################
-
-# We conduct a first hyperparameter-search using Ranger to understand how the tuning parameters behave.
-# For the ranger random forest algorithm, the only tunable hyperparameter is "mtry" (Number of randomly chosen variables to possibly split at in each node).
-
-tuneGrid <- data.frame(
-  .mtry = c(2,4,6,8,10,12,24,48,60,65), # Number of randomly chosen variables to possibly split at in each node; we screen values of 2 until 65 (the total number of predictors).
-  .splitrule = "variance", # Default splitrule variance for regression
-  .min.node.size = 5 # Default minimum node size for regression
+# Train control for caret train() function. We use k-fold cross-validation.
+train_control <- caret::trainControl(
+  method = "repeatedcv", 
+  number = 3,
+  repeats = 3,
+  verboseIter = FALSE,
+  allowParallel = TRUE
 )
 
-ranger_model <- train(SalePrice ~ .,
-                      method = "ranger",
-                      data = subset(train_set, select = -Id),
-                      trControl = trainControl(method = "cv",
-                                               number = 5, verboseIter = TRUE),
-                      tuneGrid = tuneGrid,
-                      num.trees = 2000
-                      )
-
-print(ranger_model)
-
-# The higher "mtry", the more complex the model gets. High values of "mtry" might lead to serious overfitting of the training data.
-# We plot "mtry" against the cross-validated RMSE. We can see a clear "elbow" at around an mtry of 6 to 8.
-plot(ranger_model)
-
-ranger_model_pred <- predict(ranger_model, newdata = test_set) # We predict woth the ranger_model on test_set
-
-ranger_model_rmse <- RMSE(ranger_model_pred, test_set$SalePrice)
-
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_5_ranger_overtuned", RMSE = ranger_model_rmse))
-
-model_rmses %>% knitr::kable()
-
-###
-
-# To prevent potential overfitting, we will choose the "mtry" at the "elbow" of the plot. After this value, RMSE decreases much slower with ever-increasing "mtry" values.
-# Coincidentally, the default value for "mtry" in Ranger is the square root of the number of predictors (sqrt(65) = 8).
-
-tuneGrid <- data.frame(
-  .mtry = sqrt(ncol(train_set)), # Number of randomly chosen variables to possibly split at in each node; we use a value of 8 as determined above
-  .splitrule = "variance", # Default splitrule variance for regression
-  .min.node.size = 5 # Default minimum node size for regression
-)
-
-ranger_model2 <- train(SalePrice ~ .,
-                      method = "ranger",
-                      data = subset(train, select = -Id),
-                      trControl = trainControl(method = "repeatedcv",
-                                               number = 5, repeats = 3, verboseIter = TRUE),
-                      tuneGrid = tuneGrid,
-                      num.trees = 3000,
-                      )
-
-print(ranger_model2)
-
-ranger_model2_pred <- predict(ranger_model2, newdata = test) # We predict woth the ranger_model on test_set
-
-
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_6_ranger_properly_tuned", RMSE = ranger_model2_rmse))
-
-model_rmses %>% knitr::kable()
-
-
-
-###########################
-# Glmnet - Lasso and/or Ride regression: Elastic Net Regression
-###########################
-
-
-# Train() fits only one model per Alpha value and passes all Lambda values at once for simultaneous fitting.
-# We will explore pure Ridge, pure Lasso, and mixes between the two in 5% steps (e.g. 10% ridge and 90 % lasso regression etc... )
-
-# tuneGrid for Elastic Net Regression
-tuneGrid <- expand.grid(
-  alpha = seq(0, 1, 0.05), # Mixing parameter between Lasso (L1) and Ridge (L2) regression; alpha = 0 equals pure Ridge regression, alpha = 1 equals pure Lasso regression
-  lambda = seq(0.0001, 1, length = 100) # Strength of the penalty on the coefficients; A Lambda of 1 would shrink regression coefficients to 0, so that the model would only predict the intercept
-)
-
-myControl <- trainControl(
-  method = "repeatedcv", number = 5, repeats = 3,
-  verboseIter = TRUE
-)
-
-glm_model <- train(
-  SalePrice ~ .,
-  data = subset(train, select = -Id),
+glmnet_model <- train(
+  SalePrice ~ ., data = subset(train_set, select = -Id),
+  tuneGrid = expand.grid(alpha = 0:1, lambda = seq(0.01, 1, length = 20)),
   method = "glmnet",
-  trControl = myControl,
-  tuneGrid = tuneGrid
+  trControl = train_control,
+  preProcess = c("nzv", "center", "scale")
 )
 
-print(glm_model)
+print(glmnet_model)
 
-print(glm_model$bestTune) # The optimal determined tuning parameters
+glmnet_model_pred <- predict(glmnet_model, test_set)
 
-plot(glm_model) # Plot of the tuning
-
-glm_model_pred <- predict(glm_model, newdata = test) 
-
-
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_6_glmnet", RMSE = glm_model_rmse))
-
-model_rmses %>% knitr::kable()
-
-#####
-
-
-
-
-
-
-
-
-
-
-
+RMSE(glmnet_model_pred, test_set$SalePrice)
