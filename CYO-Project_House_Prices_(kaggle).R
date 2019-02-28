@@ -15,11 +15,13 @@ if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-
 if(!require(vip)) install.packages("vip", repos = "http://cran.us.r-project.org")
 if(!require(VIM)) install.packages("VIM", repos = "http://cran.us.r-project.org")
 if(!require(doParallel)) install.packages("doParallel", repos = "http://cran.us.r-project.org")
+if(!require(mlr)) install.packages("mlr", repos = "http://cran.us.r-project.org")
+if(!require(h2o)) install.packages("h2o", repos = "http://cran.us.r-project.org")
 
 # Parallelization.
 cls <- makeCluster(detectCores(logical = FALSE))
 registerDoParallel(cls)
-on.exit(stopCluster(cl))
+on.exit(stopCluster(cls))
 
 
 # We import the training and testing data subsets (files from Kaggle)
@@ -2573,6 +2575,20 @@ grid.arrange(SaleType_boxplot, SaleType_scatterplot, nrow = 1)
 # of new houses and warranty deed conventional ("WD") are indicative of higher sale prices.
 # Some categories have simply too few entries.
 
+# We use kNN-based missing value imputation
+knn_model <- kNN(dataset, variable = "SaleType", k = 9)
+
+# Predicted SaleType values
+knn_model[knn_model$SaleType_imp == TRUE, ]$SaleType
+
+# We impute the values
+dataset$SaleType[which(is.na(dataset$SaleType))] <- knn_model[knn_model$SaleType_imp == TRUE, ]$SaleType
+
+
+
+
+
+
 
 #####
 # SaleCondition: Condition of sale
@@ -2847,7 +2863,7 @@ model_rmses %>% knitr::kable()
 # The range of parameters was empirically determined and later shortened to reduce grid search computational time.
 tuneGrid <- expand.grid(
   nrounds = seq(100, 1000, 50),
-  max_depth = 4,
+  max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = 0.05,
   gamma = 0,
   colsample_bytree = 0.8,
@@ -3019,28 +3035,25 @@ write.table(my_submission, file = "submission.csv", col.names = TRUE, row.names 
 
 
 
+### h2o ###
 
-### GLMNET model ###
+# Initialize local h2o cluster
+h2o.init()
 
-# Train control for caret train() function. We use k-fold cross-validation.
-train_control <- caret::trainControl(
-  method = "repeatedcv", 
-  number = 3,
-  repeats = 3,
-  verboseIter = FALSE,
-  allowParallel = TRUE
-)
 
-glmnet_model <- train(
-  SalePrice ~ ., data = subset(train_set, select = -Id),
-  tuneGrid = expand.grid(alpha = 0:1, lambda = seq(0.01, 1, length = 20)),
-  method = "glmnet",
-  trControl = train_control,
-  preProcess = c("nzv", "center", "scale")
-)
+# Load dataset into the h2o instance
+dataset_h2o <- as.h2o(train)
 
-print(glmnet_model)
+# Define features and target variable
+y <- "SalePrice"
+x <- setdiff(colnames(dataset), y)
 
-glmnet_model_pred <- predict(glmnet_model, test_set)
+# Generate train and test subsets
+sframe <- h2o.splitFrame(data = dataset_h2o,
+                         ratios = c(0.8, 0.1),
+                         seed = 68)
 
-RMSE(glmnet_model_pred, test_set$SalePrice)
+train_h2o <- sframe[[1]]
+validation_h2o <- sframe[[2]]
+test_h2o <- sframe[[3]]
+
