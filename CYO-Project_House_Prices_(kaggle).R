@@ -2826,7 +2826,7 @@ train_control <- trainControl(
 )
 
 # We run the model with above parameters. Additionally, we add pre-processing which removes near-zero variance estimators, centers and scales the data.
-xgb_1st_tuning <- train(
+xgb_1st_tuning <- caret::train(
   x = train_set_treated,
   y = train_set$SalePrice,
   trControl = train_control,
@@ -2881,7 +2881,7 @@ train_control <- trainControl(
 )
 
 # We run the model with above parameters. Additionally, we add pre-processing which removes near-zero variance estimators, centers and scales the data.
-xgb_2nd_tuning <- train(
+xgb_2nd_tuning <- caret::train(
   x = train_set_treated,
   y = train_set$SalePrice,
   trControl = train_control,
@@ -2934,7 +2934,7 @@ train_control <- trainControl(
 )
 
 # We run the model with above parameters. Additionally, we add pre-processing which removes near-zero variance estimators, centers and scales the data.
-xgb_3rd_tuning <- train(
+xgb_3rd_tuning <- caret::train(
   x = train_set_treated,
   y = train_set$SalePrice,
   trControl = train_control,
@@ -3005,7 +3005,7 @@ train_control <- caret::trainControl(
 )
 
 # Run the model with above parameters.
-xgb_final_model <- train(
+xgb_final_model <- caret::train(
   x = train_treated,
   y = train$SalePrice,
   trControl = train_control,
@@ -3037,23 +3037,248 @@ write.table(my_submission, file = "submission.csv", col.names = TRUE, row.names 
 
 ### h2o ###
 
-# Initialize local h2o cluster
-h2o.init()
+# Initialize local h2o cluster.
+h2o.init(min_mem_size = "4G",
+         max_mem_size = "16G",
+         nthreads = -1)
 
 
-# Load dataset into the h2o instance
-dataset_h2o <- as.h2o(train)
+# Load dataset into the h2o instance.
+train_h2o <- as.h2o(train)
+test_h2o <- as.h2o(test)
 
-# Define features and target variable
+# Define features/predictors and target variable
 y <- "SalePrice"
 x <- setdiff(colnames(dataset), y)
 
-# Generate train and test subsets
-sframe <- h2o.splitFrame(data = dataset_h2o,
-                         ratios = c(0.8, 0.1),
-                         seed = 68)
+# # Generate train and test subsets, as well as a validation subset.
+# sframe <- h2o.splitFrame(data = dataset_h2o,
+#                          ratios = 0.75,
+#                          seed = 68)
+# 
+# train_h2o <- sframe[[1]]
+# validation_h2o <- sframe[[2]]
+# 
+# # Calculate the ratio of the response variable in the training, test, and validation sets.
+# # The splitting process went okay if the ratios are pretty similar.
+# summary(train_h2o$SalePrice, exact_quantiles = TRUE)
+# summary(validation_h2o$SalePrice, exact_quantiles = TRUE)
 
-train_h2o <- sframe[[1]]
-validation_h2o <- sframe[[2]]
-test_h2o <- sframe[[3]]
 
+#####
+#####
+
+
+# Training a random forest model with h2o.
+
+
+### Random grid search for hyperparameter tuning of the h2o.randomForest model.
+rf_parameters <- list(ntrees = seq(100, 2000, 100),
+                      max_depth = seq(5, 40, 5),
+                      mtries = seq(5, 60, 5))
+
+search_criteria <- list(strategy = "RandomDiscrete",
+                        stopping_metric = "RMSE",
+                        stopping_tolerance = 0.001,
+                        stopping_rounds = 400)
+
+# Run the random grid search for the random forest.
+rf_tuning_grid <- h2o.grid("randomForest",
+                            grid_id = "rf_tuning_grid",
+                            x = x,
+                            y = y,
+                            training_frame = train_h2o,
+                            seed = 68,
+                            hyper_params = rf_parameters,
+                            search_criteria = search_criteria,
+                            nfolds = 5)
+
+# Extract the training information.
+rf.gridperformance <- h2o.getGrid(grid_id = "rf_tuning_grid",
+                                   sort_by = "RMSE",
+                                   decreasing = FALSE)
+
+# Inspect the training results which yielded the lowest RMSE.
+rf.gridperformance
+
+# Get the best model as chosen by RMSE.
+best_rf_model <- h2o.getModel(rf.gridperformance@model_ids[[1]])
+
+# Show the best tuning parameters.
+print(best_rf_model@model[["model_summary"]])
+
+# Calculate model performance.
+best_rf_model_perf <- h2o.performance(best_rf_model, test_h2o)
+
+# Extract the RMSE.
+h2o.rmse(best_rf_model_perf)
+
+# Record the result.
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "h2o_random_rf", RMSE = h2o.rmse(best_rf_model_perf)))
+
+model_rmses %>% knitr::kable()
+
+
+# Predict on test.
+
+rf_h2o_pred <- exp(h2o.predict(best_rf_model, newdata = test_h2o))
+
+# Prepare and write submission file.
+my_submission <- data.frame(Id = test$Id, SalePrice = as.vector(rf_h2o_pred))
+
+write.table(my_submission, file = "submission_h2o_rf.csv", col.names = TRUE, row.names = FALSE, sep = ",")
+
+
+
+
+
+
+
+
+
+#####
+#####
+
+
+
+# Training a gradient boosting machine model with h2o and random hyperparameter tuning.
+
+### Random grid search for hyperparameter tuning of the h2o.gbm model.
+gbm_parameters <- list(ntrees = seq(500, 3000, 100),
+                       max_depth = seq(2, 8, 1),
+                       learn_rate = c(0.005, 0.01, 0.05, 0.1))
+
+search_criteria <- list(strategy = "RandomDiscrete",
+                        stopping_metric = "RMSE",
+                        stopping_tolerance = 0.00001,
+                        stopping_rounds = 200,
+                        max_runtime_secs = 600)
+
+
+# Run the random grid search.
+gbm_tuning_grid <- h2o.grid("gbm",
+                            grid_id = "gbm_tuning_grid",
+                            x = x,
+                            y = y,
+                            training_frame = train_h2o,
+                            validation_frame = validation_h2o,
+                            seed = 68,
+                            hyper_params = gbm_parameters,
+                            search_criteria = search_criteria)
+
+# Extract the training information.
+gbm.gridperformance <- h2o.getGrid(grid_id = "gbm_tuning_grid",
+                                   sort_by = "RMSE",
+                                   decreasing = FALSE)
+
+# Inspect the training results which yielded the lowest RMSE.
+gbm.gridperformance
+
+# Get the best model as chosen by RMSE.
+best_gbm_model <- h2o.getModel(gbm.gridperformance@model_ids[[1]])
+
+# Show the best tuning parameters.
+print(best_gbm_model@model[["model_summary"]])
+
+# Calculate model performance.
+best_gbm_model_perf <- h2o.performance(best_gbm_model, test_h2o)
+
+# Extract the RMSE.
+h2o.rmse(best_gbm_model_perf)
+
+# Record the result.
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "h2o_random_gbm", RMSE = h2o.rmse(best_gbm_model_perf)))
+
+model_rmses %>% knitr::kable()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#####
+# Train a deep-learning model with h20.
+dl_model_h2o <- h2o.deeplearning(x = x,
+                             y = y,
+                             training_frame = train_h2o,
+                             validation_frame = validation_h2o)
+
+# Calculate model performance.
+dl_model_h2o_perf <- h2o.performance(dl_model_h2o, valid = TRUE)
+
+dl_model_h2o_perf
+
+# Extract the RMSE.
+h2o.rmse(dl_model_h2o_perf)
+
+# Record the result.
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "h2o_random_deep_learning_model", RMSE = h2o.rmse(dl_model_h2o_perf)))
+
+model_rmses %>% knitr::kable()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#####
+#####
+
+# Automatic machine learning with h2o: AutoML
+# AutoML compares a large number of different models and ensembles thereof.
+
+automl_model <- h2o.automl(x = x,
+                           y = y,
+                           training_frame = train_h2o,
+                           validation_frame = validation_h2o,
+                           max_runtime_secs = 600,
+                           sort_metric = "RMSE",
+                           seed = 68) 
+
+# Take a look at the output.
+automl_model
+
+# View the leaderboard. It is by default calculated on a 5-fold cross-validation.
+leaderboard <- automl_model@leaderboard
+
+leaderboard
+
+# Select the best model.
+automl_leading_model <- automl_model@leader
+
+
+# Calculate model performance.
+automl_leading_model_perf <- h2o.performance(automl_leading_model, valid = TRUE)
+
+automl_leading_model_perf
+
+# Extract the RMSE.
+h2o.rmse(automl_leading_model_perf)
+
+# Record the result.
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "h2o_autoML_leader_model", RMSE = h2o.rmse(automl_leading_model_perf)))
+
+model_rmses %>% knitr::kable()
+
+
+
+
+
+# Shut down h2o instance.
+h2o.shutdown()
