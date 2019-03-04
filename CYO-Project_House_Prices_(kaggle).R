@@ -18,13 +18,13 @@ if(!require(doParallel)) install.packages("doParallel", repos = "http://cran.us.
 if(!require(mlr)) install.packages("mlr", repos = "http://cran.us.r-project.org")
 if(!require(h2o)) install.packages("h2o", repos = "http://cran.us.r-project.org")
 
-# Parallelization.
+# Parallelization, which will be used to speed up hyperparameter tuning steps later.
 cls <- makeCluster(detectCores(logical = FALSE))
 registerDoParallel(cls)
 on.exit(stopCluster(cls))
 
 
-# We import the training and testing data subsets (files from Kaggle)
+# We import the training and testing data subsets (files from Kaggle).
 train <- read.csv("train.csv", stringsAsFactors = TRUE)
 test <- read.csv("test.csv", stringsAsFactors = TRUE)
 
@@ -61,7 +61,7 @@ summary(train$SalePrice)
 #######################################################################
 
 
-# To facilitate feature engineering and data cleaning we temporarily merge train and tet into "dataset".
+# To facilitate feature engineering and data cleaning we temporarily merge train and test into "dataset".
 test$SalePrice <- 0 # Temporarily add SalePrice column with 0s to test
 dataset <- rbind(train, test) # Merge train and test
 summary(dataset) # There's a lot of NA values in many columns
@@ -71,7 +71,6 @@ summary(dataset) # There's a lot of NA values in many columns
 # no entries for it.
 
 #####
-# Feature 1: MSSubClass
 # MSSubClass: Identifies the type of dwelling involved in the sale.
 #####
 
@@ -108,7 +107,6 @@ grid.arrange(MSSubClass_boxplot, MSSubClass_scatterplot, nrow = 1)
 # From the scatterplot we can see that only a few houses are in MSSubClass "40" and "180".
 
 #####
-# Feature 2: MSZoning
 # MSZoning: Identifies the general zoning classification of the sale.
 #####
 
@@ -170,7 +168,6 @@ dataset$MSZoning[which(is.na(dataset$MSZoning))] <- knn_model[knn_model$MSZoning
 
 
 #####
-# Feature 3: LotFrontage
 # LotFrontage: Linear feet of street connected to property
 #####
 
@@ -227,7 +224,7 @@ cor(na.omit(dataset$LotFrontage), dataset$LotArea[-which(is.na(dataset$LotFronta
 # and other potentially related features, such as LotShape, Neighborhood, LandShape etc...
 # before we can d this, however, we need to wrangle the necessary features. LotFrontage value imputation will be conducted at a later point.
 
-# We use kNN-based imputation for Exterior1st and 2nd.
+# We use kNN-based imputation for LotFrontage.
 knn_model <- kNN(dataset, variable = "LotFrontage", k = 9)
 
 # Predicted LotFrontage values
@@ -251,7 +248,6 @@ dataset %>%
 dataset$LotFrontage <- as.numeric(dataset$LotFrontage)
 
 #####
-# Feature 4: LotArea
 # LotArea: Lot size in square feet
 #####
 
@@ -269,7 +265,7 @@ LotArea_scatterplot <- dataset[train$Id, ] %>%
   ggplot(aes(x = LotArea, y = SalePrice)) +
   scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
   geom_point(alpha = 0.3) +
-  ggtitle("Scatterplot of LotArea vs. SalePrice") +
+  ggtitle("LotArea vs. SalePrice") +
   theme_bw() +
   theme(legend.position = "none") +
   geom_smooth(method = "gam", formula = y ~ s(x))
@@ -278,7 +274,7 @@ LotArea_scatterplot_log <- dataset[train$Id, ] %>%
   ggplot(aes(x = log1p(LotArea), y = SalePrice)) +
   scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
   geom_point(alpha = 0.3) +
-  ggtitle("Scatterplot of LotArea vs. SalePrice") +
+  ggtitle("Log-transformed LotArea vs. SalePrice") +
   theme_bw() +
   theme(legend.position = "none") +
   geom_smooth(method = "gam", formula = y ~ s(x)) +
@@ -293,7 +289,6 @@ cor(dataset[train$Id, ]$LotArea, dataset[train$Id, ]$SalePrice)
 
 
 #####
-# Feature 5: Street
 # Street: Type of road access to property
 #####
 
@@ -324,7 +319,6 @@ grid.arrange(Street_boxplot, Street_scatterplot, nrow = 1)
 # However, only a few houses have gravel values in Street.
 
 #####
-# Feature 6: Alley
 # Alley: Type of alley access to property
 #####
 
@@ -338,7 +332,6 @@ dataset$Alley <- str_replace_na(dataset$Alley, replacement = "None")
 dataset$Alley <- factor(dataset$Alley, levels = c("None", "Grvl", "Pave"))
 
 #####
-# Feature 7: LotShape
 # LotShape: General shape of property
 #####
 
@@ -373,7 +366,6 @@ grid.arrange(LotShape_boxplot, LotShape_scatterplot, nrow = 1)
 
 
 #####
-# Feature 8: LandContour
 # LandContour: Flatness of the property
 #####
 
@@ -405,15 +397,11 @@ grid.arrange(LandContour_boxplot, LandContour_scatterplot, nrow = 1)
 # This feature will help to distinguish some of the lower priced from the higher priced houses.
 
 #####
-# Feature 9: Utilities
 # Utilities: Type of utilities available
 #####
 
 # There are a few missing values in Utilities.
 summary(dataset$Utilities)
-
-# LandContour contains no missing values.
-summary(dataset$LandContour)
 
 # Boxplot of Utilities vs. SalePrice
 Utilities_boxplot <- dataset[train$Id, ] %>%
@@ -442,7 +430,6 @@ dataset <- subset(dataset, select = -Utilities)
 
 
 #####
-# Feature 10: LotConfig
 # LotConfig: Lot configuration
 #####
 
@@ -474,7 +461,6 @@ grid.arrange(LotConfig_boxplot, LotConfig_scatterplot, nrow = 1)
 
 
 #####
-# Feature 11: LandSlope
 # LandSlope: Slope of property
 #####
 
@@ -488,7 +474,7 @@ LandSlope_boxplot <- dataset[train$Id, ] %>%
   scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
   theme_bw() +
   theme(legend.position = "none") +
-  ggtitle("Boxplot of LandSlope vs. SalePrice")
+  ggtitle("LandSlope vs. SalePrice")
 
 # Scatterplot of LandSlope vs. SalePrice
 LandSlope_scatterplot <- dataset[train$Id, ] %>%
@@ -497,14 +483,13 @@ LandSlope_scatterplot <- dataset[train$Id, ] %>%
   scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
   theme_bw() +
   theme(legend.position = "none") +
-  ggtitle("Scatterplot of LandSlope vs. SalePrice")
+  ggtitle("LandSlope vs. SalePrice")
 
 grid.arrange(LandSlope_boxplot, LandSlope_scatterplot, nrow = 1)
 
 # From the plots we can see that a gentle land slope can be predictive of a higher house sale price.
 
 #####
-# Feature 12: Neighbourhood
 # Neighborhood: Physical locations within Ames city limits
 #####
 
@@ -524,7 +509,6 @@ dataset[train$Id, ] %>%
 # The respective Neighborhood is a strong indicator for a houses sale price.
 
 #####
-# Feature 13: Condition1
 # Condition1: Proximity to various conditions
 #####
 
@@ -592,7 +576,6 @@ grid.arrange(Condition1_boxplot, Condition1_scatterplot, nrow = 1)
 # Almost all expensive houses are in the "normal" category.
 
 #####
-# Feature 14: Condition2
 # Condition2: Proximity to various conditions (if more than one is present)
 #####
 
@@ -679,7 +662,6 @@ grid.arrange(Condition_boxplot, Condition_scatterplot, nrow = 2)
 
 
 #####
-# Feature 15: BldgType
 # BldgType: Type of dwelling
 #####
 
@@ -710,7 +692,6 @@ grid.arrange(BldgType_boxplot, BldgType_scatterplot, nrow = 1)
 # Even then, there must be other distinguishing features behind those, as the median sale price of 1Fam houses isn't any higher compared to the other categories.
 
 #####
-# Feature 16: HouseStyle
 # HouseStyle: Style of dwelling
 #####
 
@@ -741,7 +722,6 @@ grid.arrange(HouseStyle_boxplot, HouseStyle_scatterplot, nrow = 1)
 
 
 #####
-# Feature 17: OverallQual
 # OverallQual: Rates the overall material and finish of the house
 #####
 
@@ -812,7 +792,6 @@ grid.arrange(OverallQual_boxplot, OverallQual_scatterplot, nrow = 1)
 
 
 #####
-# Feature 18: OverallCond
 # OverallCond: Rates the overall condition of the house
 #####
 
@@ -883,7 +862,6 @@ grid.arrange(OverallCond_boxplot, OverallCond_scatterplot, nrow = 1)
 
 
 #####
-# Feature 19: YearBuilt
 # YearBuilt: Original construction date
 #####
 
@@ -913,7 +891,6 @@ cor(dataset[train$Id, ]$YearBuilt, dataset[train$Id, ]$SalePrice)
 
 
 #####
-# Feature 20: YearRemodAdd
 # YearRemodAdd: Remodel date (same as construction date if no remodeling or additions)
 #####
 
@@ -935,12 +912,12 @@ dataset[train$Id, ] %>%
 # There is a large correlation between YearRemodAdd and SalePrice.
 cor(dataset[train$Id, ]$YearRemodAdd, dataset[train$Id, ]$SalePrice)
 
-# There is also a large correlation between YearRemodAdd and YearBuilt. In fact, it is one.
-cor(dataset$YearRemodAdd, dataset$YearRemodAdd)
+# There is also a large correlation between YearRemodAdd and YearBuilt.
+cor(dataset$YearRemodAdd, dataset$YearBuilt
 
 # From the plot we can see that YearRemodAdd has a very similar correlation with SalePrice compared with YearBuilt.
 # Remodellings were only recorded starting 1950.
-# YearRemodAdd correaltes 100% with YearBuilt. We plot the two variables against eachother.
+# YearRemodAdd correlates > 61% with YearBuilt. We plot the two variables against eachother.
 
 # Scatterplot of YearBuilt vs. YearRemodAdd. 
 dataset[train$Id, ] %>%
@@ -950,7 +927,8 @@ dataset[train$Id, ] %>%
   scale_x_continuous(breaks = seq(1870, 2010, 10)) +
   theme_bw() +
   theme(legend.position = "none") +
-  ggtitle("Scatterplot of YearRemodAdd vs. YearBuilt")
+  ggtitle("Scatterplot of YearRemodAdd vs. YearBuilt") +
+  geom_vline(xintercept = 1950, color = "red", linetype = 2)
 
 
 # From the plot it seems that for all houses built before 1950, even if there actually wasn't any remodelling done, they received an entry in YearRemodAdd at 1950.
@@ -960,7 +938,6 @@ dataset <- subset(dataset, select = -YearRemodAdd)
 
 
 #####
-# Feature 21: RoofStyle
 # RoofStyle: Type of roof
 #####
 
@@ -990,7 +967,6 @@ grid.arrange(RoofStyle_boxplot, RoofStyle_scatterplot, nrow = 1)
 # The style of roof is not very predictive of sale price, but most expensive houses are either in the "Gable" or "Hip" category.
 
 #####
-# Feature 22: RoofMatl
 # RoofMatl: Roof material
 ##### 
 
@@ -1021,7 +997,6 @@ grid.arrange(RoofMatl_boxplot, RoofMatl_scatterplot, nrow = 1)
 
 
 #####
-# Feature 23: Exterior1st
 # Exterior1st: Exterior covering on house
 #####
 
