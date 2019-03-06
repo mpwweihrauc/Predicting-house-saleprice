@@ -331,6 +331,31 @@ summary(dataset$Alley)
 dataset$Alley <- str_replace_na(dataset$Alley, replacement = "None")
 dataset$Alley <- factor(dataset$Alley, levels = c("None", "Grvl", "Pave"))
 
+# Boxplot of Alley vs. SalePrice.
+Alley_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Alley, y = SalePrice, color = Alley)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Alley vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# Scatterplot of Alley vs. SalePrice.
+Alley_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Alley, y = SalePrice, color = Alley)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("Boxplot of Alley vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+grid.arrange(Alley_boxplot, Alley_scatterplot, nrow = 1)
+
+
+
+
+
+
 #####
 # LotShape: General shape of property
 #####
@@ -1027,7 +1052,6 @@ grid.arrange(Exterior1st_boxplot, Exterior1st_scatterplot, nrow = 1)
 # Before we deal with the missing value, we take a look at Exterior2nd as well.
 
 #####
-# Feature 24: Exterior2nd
 # Exterior2nd: Exterior covering on house (if more than one material)
 #####
 
@@ -1070,7 +1094,6 @@ dataset$Exterior1st[2152] <- knn_model[knn_model$Exterior1st_imp == TRUE, ]$Exte
 dataset$Exterior2nd[2152] <- knn_model[knn_model$Exterior2nd_imp == TRUE, ]$Exterior2nd
 
 #####
-# Feature 25: MasVnrType
 # MasVnrType: Masonry veneer type
 #####
 
@@ -1126,8 +1149,7 @@ grid.arrange(MasVnrType_boxplot, MasVnrType_scatterplot, nrow = 1)
 
 
 #####
-# Feature 26: MasVnrArea
-#
+# MasVnrArea: Masonry veneer area in square feet
 #####
 
 # There are some missing values in MasVnrArea, presumably the same houses that had missing values in MasVnrType.
@@ -1164,8 +1186,26 @@ dataset[train$Id, ] %>%
   ggtitle("Scatterplot of MasVnrArea vs. SalePrice after missing value imputation") +
   geom_smooth(method = "lm")
 
+
+# Are there houses with non-zero MasVnrArea but "None" as MasVnrType?
+dataset[which(dataset$MasVnrArea != 0 & dataset$MasVnrType == "None"), ]
+
+# We take the index.
+ind1 <- dataset[which(dataset$MasVnrArea != 0 & dataset$MasVnrType == "None"), ]$Id
+
+
+# Are there houses with zero MasVnrArea and anything but "None" as MasVnrType?
+dataset[which(dataset$MasVnrArea == 0 & dataset$MasVnrType != "None"), ]
+
+# We take the index.
+ind2 <- dataset[which(dataset$MasVnrArea == 0 & dataset$MasVnrType != "None"), ]$Id
+
+
+# We will set the area to zero and the type to "None" in these cases.
+dataset$MasVnrArea[ind1] <- 0
+dataset$MasVnrType[ind2] <- "None"
+
 #####
-# Feature 27: ExterQual
 # ExterQual: Evaluates the quality of the material on the exterior 
 #####
 
@@ -1208,7 +1248,6 @@ dataset[train$Id, ] %>%
 
 
 #####
-# Feature 28: ExterCond
 # ExterCond: Evaluates the quality of the material on the exterior 
 #####
 
@@ -1234,7 +1273,11 @@ ExterCond_scatterplot <- dataset[train$Id, ] %>%
 
 grid.arrange(ExterCond_boxplot, ExterCond_scatterplot, nrow = 1)
 
-# From the plots, we can see that not a single house has "poor" ExterCond. ExterCond is a strong predictor of sale price.
+# We plot "ExterCond" against "SalePrice" and observe that only a few houses have a "poor" or "excellent" 
+# "ExterCond." "ExterCond" is a a weaker predictor of "SalePrice" compared to "ExterQual", similar
+# to "OverallQual" vs. "OverallCond".
+
+
 
 # We transform the qualitative ordinal factor into a numeric containing the present levels.
 dataset$ExterCond <- as.numeric(factor(dataset$ExterCond, levels=c("Po", "Fa", "TA", "Gd", "Ex")))
@@ -1251,7 +1294,6 @@ dataset[train$Id, ] %>%
 
 
 #####
-# Feature 29: Foundation
 # Foundation: Type of foundation
 #####
 
@@ -1282,7 +1324,6 @@ grid.arrange(Foundation_boxplot, Foundation_scatterplot, nrow = 1)
 
 
 #####
-# Feature 30: BsmtQual
 # BsmtQual: Evaluates the height of the basement
 #####
 
@@ -1332,7 +1373,6 @@ dataset %>%
 
 
 #####
-# Feature 31: BsmtCond
 # BsmtCond: Evaluates the general condition of the basement
 #####
 
@@ -1374,7 +1414,6 @@ grid.arrange(BsmtCond_boxplot, BsmtCond_scatterplot, nrow = 1)
 
 
 #####
-# Feature 32: BsmtExposure
 # BsmtExposure: Refers to walkout or garden level walls
 #####
 
@@ -1415,7 +1454,6 @@ grid.arrange(BsmtExposure_boxplot, BsmtExposure_scatterplot, nrow = 1)
 
 
 #####
-# Feature 33: BsmtFinType1
 # BsmtFinType1: Rating of basement finished area
 #####
 
@@ -1451,7 +1489,6 @@ grid.arrange(BsmtFinType1_boxplot, BsmtFinType1_scatterplot, nrow = 1)
 # Houses with unfinished or good quality living quarter type of finish come with higher sale prices.
 
 #####
-# Feature 34: BsmtFinType2
 # BsmtFinType2: Rating of basement finished area (if multiple types)
 #####
 
@@ -1694,6 +1731,27 @@ knn_model[knn_model$Electrical_imp == TRUE, ]$Electrical
 # Missing value imputation of Electrical
 dataset[which(is.na(dataset$Electrical)), ]$Electrical <- knn_model[knn_model$Electrical_imp == TRUE, ]$Electrical
 
+# Boxplot of Electrical vs. SalePrice.
+Electrical_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Electrical, y = SalePrice, color = Electrical)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Electrical vs. SalePrice")
+
+Electrical_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Electrical, y = SalePrice, color = Electrical)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Electrical vs. SalePrice")
+
+grid.arrange(Electrical_boxplot, Electrical_scatterplot, nrow = 1)
+
+# From the plots it becomes apparent that "SBrkr" is not only the most common,
+# but also the most valuable kind of "Electrical".
 
 #####
 # 1stFlrSF: First Floor square feet
@@ -1808,6 +1866,42 @@ knn_model[knn_model$KitchenQual_imp == TRUE, ]$KitchenQual
 # Missing value imputation of KitchenQual.
 dataset[which(is.na(dataset$KitchenQual)), ]$KitchenQual <- knn_model[knn_model$KitchenQual_imp == TRUE, ]$KitchenQual
 
+# Boxplot of KitchenQual vs. SalePrice.
+KitchenQual_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = KitchenQual, y = SalePrice, color = KitchenQual)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("KitchenQual vs. SalePrice")
+
+KitchenQual_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = KitchenQual, y = SalePrice, color = KitchenQual)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("KitchenQual vs. SalePrice")
+
+grid.arrange(KitchenQual_boxplot, KitchenQual_scatterplot, nrow = 1)
+
+# From the plots we can see that "KitchenQual" strongly correlates with "SalePrice".
+# The quality of a kitchen is much more important than the total number.
+
+# We transform this qualitative ordinal factor into a numeric containing the present levels and plot it again.
+
+dataset$KitchenQual <- as.numeric(factor(dataset$KitchenQual, levels = c("Fa",
+                                                                         "TA", "Gd", "Ex")))
+# Plotting changed KitchenQual.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = KitchenQual, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("KitchenQual vs. SalePrice") +
+  geom_smooth(method = "lm")
+
 
 #####
 # TotRmsAbvGrd: Total rooms above grade (does not include bathrooms)
@@ -1850,6 +1944,27 @@ knn_model[knn_model$Functional_imp == TRUE, ]$Functional
 
 # Missing value imputation of Functional.
 dataset[which(is.na(dataset$Functional)), ]$Functional <- knn_model[knn_model$Functional_imp == TRUE, ]$Functional
+
+# Boxplot of Functional vs. SalePrice.
+Functional_boxplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Functional, y = SalePrice, color = Functional)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Functional vs. SalePrice")
+
+Functional_scatterplot <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Functional, y = SalePrice, color = Functional)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Functional vs. SalePrice")
+
+grid.arrange(Functional_boxplot, Functional_scatterplot, nrow = 1)
+
+# We plot "Functional" against "SalePrice" and observe that "Maj2" (major deductions 2) seems to influence "SalePrice" negatively. A few houses are "Sev" (severly damaged), but median "SalePrice" remaisn comparable in these cases. Most houses, also most expensive houses,have "Typ" (typical functionality) values.
 
 
 #####
@@ -1973,8 +2088,8 @@ dataset %>%
 dataset[which(dataset$GarageYrBlt > 2010), ]
 
 # From this it seems most likely that the garage was built at the same time as the house and the outlier is based on a typo.
-# We will fix this by changing the year 2207 to 2006. It is also possible that the garage was built in 2007, but most attached garages were built together with the house.
-dataset$GarageYrBlt[which(dataset$GarageYrBlt > 2010)] <- 2006
+# We will fix this by changing the year 2207 to 2007. 
+dataset$GarageYrBlt[which(dataset$GarageYrBlt > 2010)] <- 2007
 
 # We plot GarageYrBlt vs. YearBuilt and color by GarageType without the outlier.
 dataset %>%
@@ -2339,8 +2454,6 @@ dataset[train$Id, ] %>%
 # PoolArea seems to have little predictive power in terms of sasle price. Also, only a few houses actually have a pool.
 # Is having a pool of any size in general more important? We will explore PoolQC.
 
-# PoolArea can be dropped from the dataset for not having predictive power.
-dataset <- subset(dataset, select = -PoolArea)
 
 
 #####
@@ -2365,9 +2478,6 @@ dataset[train$Id, ] %>%
   theme(legend.position = "none") +
   ggtitle("Scatterplot of PoolQC vs. SalePrice")
 
-
-# There is simply not enough information encoded in the pool variables and we can drop PoolQC as well.
-dataset <- subset(dataset, select = -PoolQC)
 
 #####
 # Fence: Fence quality
@@ -2440,10 +2550,9 @@ grid.arrange(MiscFeature_boxplot, MiscFeature_scatterplot, nrow = 1)
 # While having a tennis court might increase sale price, there are simply not enough data points for the MiscFeature variable to be
 # useful.
 
-dataset <- subset(dataset, select = -MiscFeature)
 
 #####
-# MiscVal: Miscellaneous feature not covered in other categories
+# MiscVal: $Value of miscellaneous feature
 #####
 
 # There are no missing values in MiscVal
@@ -2461,9 +2570,6 @@ dataset[train$Id, ] %>%
   ggtitle("Scatterplot of MiscVal vs. SalePrice")
 
 
-# MiscVal has no predictive power for sale price and we will drop it.
-
-dataset <- subset(dataset, select = -MiscVal)
 
 
 #####
@@ -2514,9 +2620,6 @@ dataset[train$Id, ] %>%
   ylab("Sale price") +
   xlab("Year") +
   ggtitle("Distribution of SalePrice over YrSold")
-
-# As Month and Year sold don't predict sale price much we remove them from the dataset.
-dataset <- subset(dataset, select = -c(MoSold, YrSold))
 
 
 #####
@@ -2597,7 +2700,7 @@ grid.arrange(SaleCondition_boxplot, SaleCondition_scatterplot, nrow = 1)
 
 
 ###
-# Skewedness of the Outcome variable SalePrice
+# Skewedness of the outcome variable SalePrice
 ###
 
 # Monetary values are often log-normally distributed. How does SalePrice look like?
