@@ -2801,35 +2801,40 @@ cv <- xgb.cv(data = as.matrix(train_set_treated),
              early_stopping_rounds = 10,
              verbose = 0)    # silent
 
-# While the RMSE may continue to decrease on more and more rounds of iteration, the test RMSE usually doesn't. We choose the number of rounds that minimized RMSE for test.
-# Get the evaluation log of the cross-validation so we can find the number of iterations to use to minimize RMSE without overfitting the training data
+# Get the evaluation log of the cross-validation and find the number
+# of iterations that minimize RMSE without overfitting the training data
 elog <- cv$evaluation_log 
 
+# Finding the indexes.
 elog %>% 
-  summarize(ntrees.train = which.min(train_rmse_mean), # find the index of min(train_rmse_mean)
-            ntrees.test  = which.min(test_rmse_mean))  # find the index of min(test_rmse_mean)
+  summarize(ntrees.train = which.min(train_rmse_mean), 
+            ntrees.test  = which.min(test_rmse_mean))
 
-# We save the number of iterations that minimize test-RMSE in `niter`.
+# Save the number of iterations that minimize test-RMSE in `niter`.
 niter <- elog %>% 
   summarize(niter.train = which.min(train_rmse_mean),
             niter.test  = which.min(test_rmse_mean)) %>%
   use_series(niter.test)
 
-# Next we run the actual modelling process with the information gained by running xgboost cross-validation above.  The treated `train_set`has to be provided as a matrix.
-SalePrice_model_xgb <- xgboost(data = as.matrix(train_set_treated),
-                               label = train_set$SalePrice,
-                               nrounds = niter,
-                               objective = "reg:linear",
-                               verbose = 0)  
+# Next we run the actual modelling process with the information
+# gained by running xgboost cross-validation above.
+# The treated `train_set`has to be provided as a matrix.
+XGBoost_baseline <- xgboost(data = as.matrix(train_set_treated),
+                            label = train_set$SalePrice,
+                            nrounds = niter,
+                            objective = "reg:linear",
+                            verbose = 0)  
 
 # Now we can predict SalePrice in the test_set with the xgb-model
-SalePrice_model_xbg_pred <- predict(SalePrice_model_xgb, newdata = as.matrix(test_set_treated))
+XGBoost_baseline_pred <- predict(XGBoost_baseline,
+                                 newdata = as.matrix(test_set_treated))
 
 # Calculate RMSE.
-model_4_xgb_RMSE <- RMSE(SalePrice_model_xbg_pred, test_set$SalePrice)
+XGBoost_baseline_RMSE <- RMSE(XGBoost_baseline_pred, test_set$SalePrice)
 
 # Record the RMSE.
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_4_xgb_base", RMSE = model_4_xgb_RMSE))
+model_rmses <- bind_rows(model_rmses,
+                         data_frame(Model = "XGBoost_baseline", RMSE = XGBoost_baseline_RMSE))
 
 # Print the RMSE table.
 model_rmses %>% knitr::kable()
@@ -2889,7 +2894,7 @@ registerDoSEQ()
 xgb_1st_tuning$bestTune
 
 # Visualization of the 1st tuning round.
-ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.13, 0.17))
+ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.13, 0.15))
 
 vip(xgb_1st_tuning, num_features = 10) # We take a look at the most important features
 
@@ -2949,7 +2954,7 @@ registerDoSEQ()
 xgb_2nd_tuning$bestTune
 
 # Visualization of the 2nd tuning round.
-ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.13, 0.17))
+ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.13, 0.15))
 
 
 # We can select the best tuning values from the model like this
@@ -2968,15 +2973,14 @@ model_rmses %>% knitr::kable()
 ### 3rd tune ###
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
-# The range of parameters was empirically determined and later shortened to reduce grid search computational time.
 tuneGrid <- expand.grid(
-  nrounds = seq(100, 1000, 50),
-  max_depth = 4,
-  eta = 0.05,
+  nrounds = seq(150, 4000, 50),
+  max_depth = xgb_1st_tuning$bestTune$max_depth,
+  eta = c(0.01, 0.025, 0.05, 0.1),
   gamma = 0,
-  colsample_bytree = seq(0.4, 1, 0.2),
-  min_child_weight = 3,
-  subsample = seq(0.4, 1, 0.2)
+  colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
+  min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
+  subsample = xgb_2nd_tuning$bestTune$subsample
 )
 
 # We define a custom train control for the caret train() function.
@@ -2985,25 +2989,29 @@ train_control <- trainControl(
   number = 3,
   repeats = 3,
   verboseIter = FALSE,
-  allowParallel = TRUE # WARNING: Your CPU might run hot with active parallelization!
+  allowParallel = TRUE
 )
 
-# We run the model with above parameters. Additionally, we add pre-processing which removes near-zero variance estimators, centers and scales the data.
+# We run the model with above parameters.
+# Additionally, we add pre-processing which removes near-zero variance estimators,
+# as well as centers and scales the data prior to training.
 xgb_3rd_tuning <- caret::train(
   x = train_set_treated,
   y = train_set$SalePrice,
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
-  verbose = TRUE,
+  verbose = FALSE,
   preProcess = c("nzv", "center", "scale")
 )
 
+# Print the best tuning parameters.
+xgb_3rd_tuning$bestTune
 
-# # Visualization of the 3rd tuning round and the most important features
-ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.13, 0.17))
+# Visualization of the 3rd tuning round.
+ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.13, 0.15))
 
-vip(xgb_3rd_tuning, num_features = 10) # We take a look at the most important features
+
 
 # We can select the best tuning values from the model like this
 xgb_3rd_tuning$bestTune
