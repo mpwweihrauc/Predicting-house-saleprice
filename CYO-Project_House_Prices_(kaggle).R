@@ -21,15 +21,10 @@ if(!require(h2o)) install.packages("h2o", repos = "http://cran.us.r-project.org"
 # Parallelization, which will be used to speed up hyperparameter tuning steps later.
 cls <- makeCluster(detectCores(logical = FALSE))
 registerDoParallel(cls)
-on.exit(stopCluster(cls))
-
 
 # We import the training and testing data subsets (files from Kaggle).
 train <- read.csv("train.csv", stringsAsFactors = TRUE)
 test <- read.csv("test.csv", stringsAsFactors = TRUE)
-
-
-
 
 ###
 # Exploratory data analysis
@@ -753,28 +748,32 @@ grid.arrange(HouseStyle_boxplot, HouseStyle_scatterplot, nrow = 1)
 # There are no missing values in OverallQual
 summary(dataset$OverallQual)
 
-# OverallQual should be an ordinal factor variable, not an integer.
-dataset$OverallQual <- factor(dataset$OverallQual)
+# OverallQual should be a numeric variable, not an integer.
+dataset$OverallQual <- as.numeric(dataset$OverallQual)
 
 
 # Boxplot of OverallQual vs. SalePrice.
-OverallQual_boxplot <- dataset[train$Id, ] %>%
-  ggplot(aes(x = OverallQual, y = SalePrice, color = OverallQual)) +
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallQual, y = SalePrice, color = factor(OverallQual))) +
   geom_boxplot() +
   scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(1, 10, 1)) +
   theme_bw() +
   theme(legend.position = "none") +
-  ggtitle("Boxplot of OverallQual vs. SalePrice")
+  ggtitle("OverallQual vs. SalePrice")
 
-OverallQual_scatterplot <- dataset[train$Id, ] %>%
-  ggplot(aes(x = OverallQual, y = SalePrice, color = OverallQual)) +
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallQual, y = SalePrice, color = factor(OverallQual))) +
   geom_point(alpha = 0.3) +
   scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(1, 10, 1)) +
   theme_bw() +
   theme(legend.position = "none") +
-  ggtitle("Boxplot of OverallQual vs. SalePrice")
+  ggtitle("OverallQual vs. SalePrice")
 
-grid.arrange(OverallQual_boxplot, OverallQual_scatterplot, nrow = 1)
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
 
 # OverallQual has tremendous influence on a houses sale price. In the highest category, 10, there are 2 houses with
 # unexpectedly low, and extremely high sale prices. This increases the range a lot.
@@ -782,38 +781,10 @@ grid.arrange(OverallQual_boxplot, OverallQual_scatterplot, nrow = 1)
 
 # There are only a few houses in the lowest OverallQual categories 1 and 2. Additionally, the higher quality levels 
 # show quite a large range of values.
-# It would be beneficial to bin OverallQual into a lower number of categories, by combining several levels into one.
+
 dataset$OverallQual <- as.numeric(dataset$OverallQual)
 
-# To combat underrepresented categories, we fuse two levels together.
-dataset$OverallQual[dataset$OverallQual %in% c(1:2)] <- "Poor"
-dataset$OverallQual[dataset$OverallQual %in% c(3:4)] <- "Fair"
-dataset$OverallQual[dataset$OverallQual %in% c(5:6)] <- "Average"
-dataset$OverallQual[dataset$OverallQual %in% c(7:8)] <- "Good"
-dataset$OverallQual[dataset$OverallQual %in% c(9:10)] <- "Excellent"
 
-dataset$OverallQual <- factor(dataset$OverallQual, levels = c("Poor", "Fair", "Average", "Good", "Excellent"))
-
-# Boxplot of engineered OverallQual vs. SalePrice.
-OverallQual_boxplot <- dataset[train$Id, ] %>%
-  ggplot(aes(x = OverallQual, y = SalePrice, color = OverallQual)) +
-  geom_boxplot() +
-  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
-  theme_bw() +
-  theme(legend.position = "none") +
-  ggtitle("Boxplot of engineered OverallQual vs. SalePrice")
-
-OverallQual_scatterplot <- dataset[train$Id, ] %>%
-  ggplot(aes(x = OverallQual, y = SalePrice, color = OverallQual)) +
-  geom_point(alpha = 0.3) +
-  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
-  theme_bw() +
-  theme(legend.position = "none") +
-  ggtitle("Boxplot of engineered OverallQual vs. SalePrice")
-
-grid.arrange(OverallQual_boxplot, OverallQual_scatterplot, nrow = 1)
-
-# The engineered OverallQual levels are now very distinct in sale price.
 
 
 #####
@@ -826,62 +797,32 @@ summary(dataset$OverallCond)
 # OverallCond should be an ordinal factor variable, not an integer.
 dataset$OverallCond <- factor(dataset$OverallCond)
 
-
 # Boxplot of OverallCond vs. SalePrice.
-OverallCond_boxplot <- dataset[train$Id, ] %>%
-  ggplot(aes(x = OverallCond, y = SalePrice, color = OverallCond)) +
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallCond, y = SalePrice, color = factor(OverallCond))) +
   geom_boxplot() +
   scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(1, 9, 1)) +
   theme_bw() +
   theme(legend.position = "none") +
   ggtitle("Boxplot of OverallCond vs. SalePrice")
 
-OverallCond_scatterplot <- dataset[train$Id, ] %>%
-  ggplot(aes(x = OverallCond, y = SalePrice, color = OverallCond)) +
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallCond, y = SalePrice, color = factor(OverallCond))) +
   geom_point(alpha = 0.3) +
   scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(1, 9, 1)) +
   theme_bw() +
   theme(legend.position = "none") +
   ggtitle("Boxplot of OverallCond vs. SalePrice")
 
-grid.arrange(OverallCond_boxplot, OverallCond_scatterplot, nrow = 1)
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
 
 # Contrary to intuition, OverallCond is much less predictive of a houses sale price and there is not a single house with a "very excellent" condition.
 # We observe that the most expensive houses are between 4 - 9, with 5 having most of them. OverallCond below 5 holds houses with lower sale price.
 # The lower two levels hold only very few houses.
-
-# It makes sense to bin this feature into a lower number of levels.
-# OverallCond 1-4 will become "Bad", OverallCond 5-7 will become "Good" and OverallCond >= 8 will become "Excellent".
-dataset$OverallCond <- as.numeric(dataset$OverallCond)
-dataset$OverallCond[dataset$OverallCond %in% c(1:4)] <- "Bad"
-dataset$OverallCond[dataset$OverallCond %in% c(5:7)] <- "Good"
-dataset$OverallCond[dataset$OverallCond %in% c(8:9)] <- "Excellent"
-
-dataset$OverallCond <- factor(dataset$OverallCond, levels = c("Bad", "Good", "Excellent"))
-
-# Boxplot of engineered OverallCond vs. SalePrice.
-OverallCond_boxplot <- dataset[train$Id, ] %>%
-  ggplot(aes(x = OverallCond, y = SalePrice, color = OverallCond)) +
-  geom_boxplot() +
-  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
-  theme_bw() +
-  theme(legend.position = "none") +
-  ggtitle("Boxplot of engineered OverallCond vs. SalePrice")
-
-OverallCond_scatterplot <- dataset[train$Id, ] %>%
-  ggplot(aes(x = OverallCond, y = SalePrice, color = OverallCond)) +
-  geom_point(alpha = 0.3) +
-  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
-  theme_bw() +
-  theme(legend.position = "none") +
-  ggtitle("Boxplot of engineered OverallCond vs. SalePrice")
-
-grid.arrange(OverallCond_boxplot, OverallCond_scatterplot, nrow = 1)
-
-# We now have less categories for OverallCond, with more houses in each of them. A bad OverallCond can be indicative of a lower sale price.
-
-
-
 
 
 
@@ -2756,8 +2697,8 @@ temp <- train[test_index, ] # temporary test set
 
 # We make sure there are no entries in test_set that aren't in train_set
 test_set <- temp %>%
-  semi_join(train_set, by = c("Electrical")) # Variables were determined by trial and error with the lm() models below
-# We return the removed entries from test to train
+  semi_join(train_set, by = c("Electrical", "MiscFeature")) 
+
 removed <- anti_join(temp, test_set)
 train_set <- rbind(train_set, removed)
 
@@ -2765,42 +2706,72 @@ summary(train_set)
 summary(test_set)
 
 
-# 1. Model 1: Simple linear regression as a baseline.
-# As our first, very simple model we predict house sale price via linear regression of the LotArea.
-# We generate a table to keep track of the RMSEs our various models generate.
+## Simple linear regression as a baseline model.
 
-model_1_lm <- lm(SalePrice ~ OverallQual, data = train_set) # Linear regression with a single predictor
-model_1_pred <- predict(model_1_lm, newdata = test_set) # Predict on test_set
+# As our first, very simple model we predict house "SalePrice" via simple linear regression with just "GrLivArea". We also generate a table to keep track of the RMSEs our various models generate.
 
-model_1_lm_RMSE <- RMSE(model_1_pred, test_set$SalePrice) # Calculate RMSE
+# Linear regression with a single predictor, "GrLivArea".
+model_1_lm <- lm(SalePrice ~ GrLivArea, data = train_set) 
 
-model_rmses <- data_frame(Model = "Model_1_lm", RMSE = model_1_lm_RMSE) # Record RMSE of Model 1
+# Predict on test_set.
+model_1_pred <- predict(model_1_lm, newdata = test_set) 
 
+# Calculate RMSE with our defined function.
+model_1_lm_RMSE <- RMSE(model_1_pred, test_set$SalePrice) 
+
+# Record RMSE of the model.
+model_rmses <- data_frame(Model = "Simple_lm", RMSE = model_1_lm_RMSE)
+
+# Print RMSEs.
 model_rmses %>% knitr::kable()
 
-# 2. Model 2: Multivariate linear regression with all predictors.
-# In our second model, we use all available predictors.
-model_2_lm <- lm(SalePrice ~ ., data = subset(train_set, select = -c(Id))) # We remove Id and predict with all
-model_2_pred <- predict(model_2_lm, newdata = subset(test_set, select = -c(Id)))
-model_2_lm_RMSE <- RMSE(model_2_pred, test_set$SalePrice)
 
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_2_Multivariate_lm", RMSE = model_2_lm_RMSE))
 
+#####
+# Multivariate linear regression with several predictors.
+model_2_multi_lm <- lm(SalePrice ~ GrLivArea + OverallQual + YearBuilt, data = train_set) 
+
+# Predict on test_set.
+model_2_multi_lm_pred <- predict(model_2_multi_lm, newdata = test_set) 
+
+# Calculate RMSE with our defined function.
+model_2_multi_lm_RMSE <- RMSE(model_2_multi_lm_pred, test_set$SalePrice) 
+
+# Record RMSE of the model.
+model_rmses <- data_frame(Model = "Multi_lm_several", RMSE = model_2_multi_lm_RMSE)
+
+# Print RMSEs.
 model_rmses %>% knitr::kable()
 
-# RMSE improved substantially, to below 0.14.
-# This linear regression RMSE will serve as the baseline RMSE.
-# Keep in mind that this model has not been regularized at all and most likely heavily overfits the training data.
 
-# We examine the multivariate lm model 2. It seems that most predictors are not significant as per p-value.
-summary(model_2_lm)
+#####
+# Multivariate linear regression utilizing all available predictors achieves an even lower RMSEm which is printed below.
+
+# Multivariate linear regression with all predictors.
+model_3_multi_lm <- lm(SalePrice ~ ., data = train_set) 
+
+# Predict on test_set.
+model_3_multi_lm_pred <- predict(model_3_multi_lm, newdata = test_set) 
+
+# Calculate RMSE with our defined function.
+model_3_multi_lm_RMSE <- RMSE(model_3_multi_lm_pred, test_set$SalePrice) 
+
+# Record RMSE of the model.
+model_rmses <- data_frame(Model = "Multi_lm_all", RMSE = model_3_multi_lm_RMSE)
+
+# Print RMSEs.
+model_rmses %>% knitr::kable()
 
 
 
 
 
 
-# 3. Model 3: Gradient Boosting Machine - XGBOOST
+
+
+
+
+# Gradient Boosting Machine - XGBOOST
 
 # We select all relevant predictors
 variables <- names(subset(train_set, select = -c(Id, SalePrice)))
@@ -2822,51 +2793,46 @@ str(train_set_treated)
 str(test_set_treated)
 
 
-
-cv <- xgb.cv(params = list(objective = "reg:linear", 
-                           eta = 0.05),
-              data = as.matrix(train_set_treated),  # xgb.cv only takes a matrix of the treated, all-numerical input data
+# xgb.cv only takes a matrix of the treated, all-numerical input data.
+cv <- xgb.cv(data = as.matrix(train_set_treated),  
              label = train_set$SalePrice, # Outcome from untreated data
-             nrounds = 2000, # We go up to 200 rounds of fitting models on the remaining residuals
+             nrounds = 500,
              nfold = 5, # We use 5 folds for cross-validation
-             early_stopping_rounds = 50,
+             early_stopping_rounds = 10,
              verbose = 0)    # silent
 
-# While the RMSE may continue to decrease on more and more rounds if iteration, the test RMSE usually doesn't.
-# We choose the number of rounds that minimize RMSE for test
-elog <- cv$evaluation_log # Get the evaluation log of the cross-validation so we can find the number of trees to use to minimize RMSE without overfitting the training data
+# While the RMSE may continue to decrease on more and more rounds of iteration, the test RMSE usually doesn't. We choose the number of rounds that minimized RMSE for test.
+# Get the evaluation log of the cross-validation so we can find the number of iterations to use to minimize RMSE without overfitting the training data
+elog <- cv$evaluation_log 
 
 elog %>% 
-  summarize(ntrees.train = which.min(train_rmse_mean),   # find the index of min(train_rmse_mean)
-            ntrees.test  = which.min(test_rmse_mean))   # find the index of min(test_rmse_mean)
+  summarize(ntrees.train = which.min(train_rmse_mean), # find the index of min(train_rmse_mean)
+            ntrees.test  = which.min(test_rmse_mean))  # find the index of min(test_rmse_mean)
 
-# We save the number of trees that minimize test RMSE in ntrees
-ntrees <- elog %>% 
-  summarize(ntrees.train = which.min(train_rmse_mean),
-            ntrees.test  = which.min(test_rmse_mean)) %>%
-  use_series(ntrees.test)
+# We save the number of iterations that minimize test-RMSE in `niter`.
+niter <- elog %>% 
+  summarize(niter.train = which.min(train_rmse_mean),
+            niter.test  = which.min(test_rmse_mean)) %>%
+  use_series(niter.test)
 
-# Next we run the actual modelling process with the information gained by running xgboost cross-validation above
-SalePrice_model_xgb <- xgboost(data = as.matrix(train_set_treated), # Treated training data as a matrix
-                                 label = train_set$SalePrice,  # Column of outcomes from original data
-                                 nrounds = ntrees,       # number of trees to build, which we determined via cross-validation
-                                 objective = "reg:linear", # objective
-                                 eta = 0.05, # The learning rate; Closer to 0 is slower, but less prone to overfitting; Closer to 1 is faster, but more likely to overfit
-                                 max_depth = 3,
-                                 verbose = 0)  # silent
+# Next we run the actual modelling process with the information gained by running xgboost cross-validation above.  The treated `train_set`has to be provided as a matrix.
+SalePrice_model_xgb <- xgboost(data = as.matrix(train_set_treated),
+                               label = train_set$SalePrice,
+                               nrounds = niter,
+                               objective = "reg:linear",
+                               verbose = 0)  
 
 # Now we can predict SalePrice in the test_set with the xgb-model
-SalePrice_model_xbg_pred <- predict(SalePrice_model_xgb, newdata = as.matrix(test_set_treated)) # We predict LotFrontage; newdata has to be a matrix
-SalePrice_model_xbg_pred
+SalePrice_model_xbg_pred <- predict(SalePrice_model_xgb, newdata = as.matrix(test_set_treated))
 
-model_3_xgb_RMSE <- RMSE(SalePrice_model_xbg_pred, test_set$SalePrice)
+# Calculate RMSE.
+model_4_xgb_RMSE <- RMSE(SalePrice_model_xbg_pred, test_set$SalePrice)
 
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_3_xgb_linreg", RMSE = model_3_xgb_RMSE))
+# Record the RMSE.
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_4_xgb_base", RMSE = model_4_xgb_RMSE))
 
+# Print the RMSE table.
 model_rmses %>% knitr::kable()
-
-# The RMSE was worsened compared to the simple linear regression approach.
-# But can we do better? We try and tune our xgb model.
 
 
 #####
@@ -2883,14 +2849,13 @@ model_rmses %>% knitr::kable()
 #####
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
-# The range of parameters was empirically determined and later shortened to reduce grid search computational time.
 tuneGrid <- expand.grid(
-  nrounds = seq(100, 1000, 50),
-  max_depth = c(2, 3, 4, 5, 6, 8),
+  nrounds = seq(150, 1000, 50),
+  max_depth = c(2, 3, 4, 5, 6),
   eta = 0.05,
   gamma = 0,
   colsample_bytree = 0.8,
-  min_child_weight = 2,
+  min_child_weight = c(2, 4, 6),
   subsample = 0.8
 )
 
@@ -2900,10 +2865,12 @@ train_control <- trainControl(
   number = 3,
   repeats = 3,
   verboseIter = FALSE,
-  allowParallel = TRUE # WARNING: Your CPU might run hot with active parallelization!
+  allowParallel = TRUE
 )
 
-# We run the model with above parameters. Additionally, we add pre-processing which removes near-zero variance estimators, centers and scales the data.
+# We run the model with above parameters.
+# Additionally, we add pre-processing which removes near-zero variance estimators,
+# as well as centers and scales the data prior to training.
 xgb_1st_tuning <- caret::train(
   x = train_set_treated,
   y = train_set$SalePrice,
@@ -2914,21 +2881,25 @@ xgb_1st_tuning <- caret::train(
   preProcess = c("nzv", "center", "scale")
 )
 
+# Paralellization. Insert serial backend, otherwise error in repetitive tasks.
+stopCluster(cls)
+registerDoSEQ()
 
-# # Visualization of the 1st tuning round and the most important features
+# Print the best tuning parameters.
+xgb_1st_tuning$bestTune
+
+# Visualization of the 1st tuning round.
 ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.13, 0.17))
 
 vip(xgb_1st_tuning, num_features = 10) # We take a look at the most important features
 
-# We can select the best tuning values from the model like this
-xgb_1st_tuning$bestTune
 
 # We predict on the test_set and record the "out-of-bag" RMSE
 xgb_1st_tuning_pred <- predict(xgb_1st_tuning, test_set_treated)
 
 xgb_1st_tuning_rmse <- RMSE(xgb_1st_tuning_pred, test_set$SalePrice)
 
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_4_xgb_1st_tune", RMSE = xgb_1st_tuning_rmse))
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_5_xgb_1st_tune", RMSE = xgb_1st_tuning_rmse))
 
 model_rmses %>% knitr::kable()
 
@@ -2938,15 +2909,14 @@ model_rmses %>% knitr::kable()
 ### 2nd tune ###
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
-# The range of parameters was empirically determined and later shortened to reduce grid search computational time.
 tuneGrid <- expand.grid(
-  nrounds = seq(100, 1000, 50),
+  nrounds = seq(150, 1000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = 0.05,
   gamma = 0,
-  colsample_bytree = 0.8,
-  min_child_weight = seq(1, 9, 2),
-  subsample = 0.8
+  colsample_bytree = seq(0.4, 0.9, 0.1),
+  min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
+  subsample = seq(0.4, 0.9, 0.1)
 )
 
 # We define a custom train control for the caret train() function.
@@ -2955,25 +2925,32 @@ train_control <- trainControl(
   number = 3,
   repeats = 3,
   verboseIter = FALSE,
-  allowParallel = TRUE # WARNING: Your CPU might run hot with active parallelization!
+  allowParallel = TRUE
 )
 
-# We run the model with above parameters. Additionally, we add pre-processing which removes near-zero variance estimators, centers and scales the data.
+# We run the model with above parameters.
+# Additionally, we add pre-processing which removes near-zero variance estimators,
+# as well as centers and scales the data prior to training.
 xgb_2nd_tuning <- caret::train(
   x = train_set_treated,
   y = train_set$SalePrice,
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
-  verbose = TRUE,
+  verbose = FALSE,
   preProcess = c("nzv", "center", "scale")
 )
 
+# Paralellization. Insert serial backend, otherwise error in repetitive tasks.
+stopCluster(cls)
+registerDoSEQ()
 
-# # Visualization of the 2nd tuning round and the most important features
+# Print the best tuning parameters.
+xgb_2nd_tuning$bestTune
+
+# Visualization of the 2nd tuning round.
 ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.13, 0.17))
 
-vip(xgb_2nd_tuning, num_features = 10) # We take a look at the most important features
 
 # We can select the best tuning values from the model like this
 xgb_2nd_tuning$bestTune
