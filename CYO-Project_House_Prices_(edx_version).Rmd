@@ -2,7 +2,7 @@
 title: 'HarvardX: PH125.9x Data Science: Capstone - "Choose Your Own" Project: Predicting
   house prices'
 author: "Martin Weihrauch"
-date: "31 January 2019"
+date: "12 March 2019"
 output:
   pdf_document:
     number_sections: yes
@@ -3510,7 +3510,7 @@ After training and fitting the model, we will visually inspect which set of hype
 **Please note that model fitting is utilizing parallelization, which might require more RAM and cause increased CPU heat production during modelling.**
 
 
-### First round of hyperparameter tuning
+### First round of hyperparameter tuning: max_depth and min_child_weight
 
 ```{r, warning = FALSE, message = FALSE}
 # We define a tune grid with selected ranges of hyperparameters to tune.
@@ -3579,7 +3579,7 @@ model_rmses %>% knitr::kable()
 The RMSE has improved significantly with these modelling settings. Next, we will tune the remaining hyperparameters to see whether we can improve things even further.
 
 
-### Second round of hyperparameter tuning
+### Second round of hyperparameter tuning: colsample_bytree and subsample
 
 After we determined good values for `max_depth` and `min_child_weight` in the first tuning round, we will now test several different values for `colsample_bytree` and `subsample`. The latter denotes the fraction of observations to be randomly samples for each tree, thereby preventing overfitting if values are lower. For example, a setting of 0.7 would mean that "xgbTree" would randomly sample 70% of the training data prior to growing trees in each iteration. `colsample_bytree` acts in similar fashion and denotes the subsample ratio of columns when constructing each tree.
 
@@ -3638,16 +3638,16 @@ model_rmses <- bind_rows(model_rmses,
 model_rmses %>% knitr::kable()
 ```
 
-### Third round of hyperparameter tuning
+### Third round of hyperparameter tuning: eta and nrounds
 
 In the third and last round of hyperparameter tuning we will determine the optimal learning rate `eta` and the optimal number of boosting iterations `nrounds`. The slower the learning rate, the more "fine-grained" the fitting process will be. The algorithm learns in smaller steps, but can therefore find finer optima. `eta` achieves this by shrinking the determined variable weights afer each step. It is therefore also called "step size shrinkage". By shrinking feature weights each step, the algorithm becomes more conservative.
 
 ```{r, warning = FALSE, message = FALSE}
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 4000, 50),
+  nrounds = seq(150, 2000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = c(0.01, 0.025, 0.05, 0.1),
+  eta = c(0.025, 0.05, 0.075, 0.1),
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
@@ -3696,4 +3696,79 @@ model_rmses <- bind_rows(model_rmses,
     data_frame(Model = "caret_xgbTree_3rd_tune", RMSE = xgb_3rd_tuning_rmse))
 
 model_rmses %>% knitr::kable()
+```
+
+### Fitting the model with optimized hyperparameters on the entire training subset
+
+As a final step we fit the model with the above determined parameters on the entire training subset `train`. Accordingly, `train` has to be prepared via "one-hot-encoding". We can then fit the final "xgbTree" model with the hyperparameters from the final tuning round. We are using 3-times repeated 5-fold cross-validation in this final step.
+
+```{r}
+# We select all relevant predictors
+variables <- names(subset(train, select = -c(Id, SalePrice)))
+
+# Devise a "treatment plan"" for the variables.
+treatment_plan <- designTreatmentsZ(train, variables, verbose = FALSE) 
+
+newvars <- treatment_plan %>%
+    use_series(scoreFrame) %>%      
+    filter(code %in% c("clean", "lev")) %>%  
+    use_series(varName)
+
+# The prepare() function prepares our data subsets according to the treatment plan
+# we devised above and encodes all relevant variables "newvars" numerically.
+train_treated <- vtreat::prepare(treatment_plan, train,  varRestriction = newvars)
+test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
+
+# We set the final tuning parameters.
+tuneGrid <- expand.grid(
+  nrounds = seq(150, 2000, 50),
+  max_depth = xgb_1st_tuning$bestTune$max_depth,
+  eta = xgb_3rd_tuning$bestTune$eta,
+  gamma = 0,
+  colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
+  min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
+  subsample = xgb_2nd_tuning$bestTune$subsample
+)
+
+# Train control for caret train() function. We use k-fold cross-validation.
+train_control <- caret::trainControl(
+  method = "repeatedcv", 
+  number = 5,
+  repeats = 3,
+  verboseIter = FALSE,
+  allowParallel = TRUE
+)
+
+# Run the model with above parameters.
+xgb_final_model <- caret::train(
+  x = train_treated,
+  y = train$SalePrice,
+  trControl = train_control,
+  tuneGrid = tuneGrid,
+  method = "xgbTree",
+  verbose = FALSE,
+  preProcess = c("nzv", "center", "scale")
+)
+```
+
+We can then visualize the final model and take a look at the lowest cross-validation RMSE value, prior to predicting against `test` (which doesn't contain a "SalePrice" column).
+
+```{r, error = FALSE, message = FALSE}
+# Visualization of the final fitted model.
+ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.125, 0.140))
+
+# Lowest RMSE obtained in cross-validation.
+min(xgb_final_model$results$RMSE)
+```
+
+Finally, we can predict on `test` and prepare the submission file for entry into the **Kaggle** competition, where the submission is evaluated and scored on a public leaderboard. At the time of this writing, the generated submission file scored an RMSE of 0.12588 and achieved a rank of 1475 on the public leaderboard of the respective competition. The public leaderboard is calculated with approximately 50% of the test data and the final results will be based on the other 50%, so final scores are subject to change. Curiously, the actual public score at **Kaggle** is very close to the RMSE determined by cross-validation during the final model fitting above (RMSE of ~0.1251).
+
+```{r}
+# Predicting on test. We take the exp() as we log-transformed "SalePrice".
+xgb_final_model_pred <- exp(predict(xgb_final_model, as.matrix(test_treated)))
+
+# We create the submission file.
+my_submission <- data.frame(Id = test$Id, SalePrice = xgb_final_model_pred)
+
+write.table(my_submission, file = "submission.csv", col.names = TRUE, row.names = FALSE, sep = ",")
 ```

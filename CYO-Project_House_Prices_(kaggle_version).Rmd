@@ -1,0 +1,3774 @@
+---
+title: 'HarvardX: PH125.9x Data Science: Capstone - "Choose Your Own" Project: Predicting
+  house prices'
+author: "Martin Weihrauch"
+date: "31 January 2019"
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+---
+
+# Overview
+
+## Dataset Preparation
+The house prices dataset can be found on [**Kaggle**](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data) or, alternatively, in my [**Github repository**](https://github.com/mpwweihrauc/ML_House_Prices.git). We will work with the `test.csv` and `train.csv` files. There is also a `data_description.txt` with descriptions about all the different parameters in the dataset. The desired outcome variable "SalePrice" is not present in `test`. 
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Please download the datasets from the provided link or find them in my provided Github repository, links below, or in the report.
+# Link to Kaggle page: https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data
+# Link to my Github page: https://github.com/mpwweihrauc/ML_House_Prices.git
+# You will need the test.csv and the train.csv files. There is also a data_description.txt with descriptions for all the different parameters in the dataset.
+
+# We begin by loading/installing all the required libraries and packages.
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org", dependencies = c("Depends", "Suggests"))
+if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
+if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.org")
+if(!require(xgboost)) install.packages("xgboost", repos = "http://cran.us.r-project.org")
+if(!require(magrittr)) install.packages("magrittr", repos = "http://cran.us.r-project.org")
+if(!require(vtreat)) install.packages("vtreat", repos = "http://cran.us.r-project.org")
+if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-project.org")
+if(!require(vip)) install.packages("vip", repos = "http://cran.us.r-project.org")
+if(!require(VIM)) install.packages("VIM", repos = "http://cran.us.r-project.org")
+if(!require(doParallel)) install.packages("doParallel", repos = "http://cran.us.r-project.org")
+if(!require(mlr)) install.packages("mlr", repos = "http://cran.us.r-project.org")
+if(!require(h2o)) install.packages("h2o", repos = "http://cran.us.r-project.org")
+
+# Parallelization, which will be used to speed up hyperparameter tuning steps later.
+cl <- makeCluster(detectCores(logical = FALSE))
+registerDoParallel(cl = cl)
+
+
+# We import the training and testing data subsets (files from Kaggle).
+train <- read.csv("train.csv", stringsAsFactors = TRUE)
+test <- read.csv("test.csv", stringsAsFactors = TRUE)
+```
+
+\pagebreak
+
+# Exploratory Data Analysis and Dataset Manipulations
+We begin by inspecting some basic properties of the dataset. The desired outcome column is named "SalePrice" and denotes a houses' sale price in dollars.
+In the train subset we are dealing with 1460 different houses and 81 different features of them (including their Id), such as the year they were built in or their overall condition. We also notice that several features contain missing values.
+
+```{r, echo = TRUE}
+dplyr::glimpse(train)
+```
+
+We inspect the desired outcome "SalePrice" and can see that house prices range from 34900 to 755000 Dollars in the training subset. The median house price is 163000 Dollars.
+```{r, echo = TRUE}
+summary(train$SalePrice)
+```
+
+To facilitate feature engineering and data cleaning we temporarily merge `train` and `test` into `dataset`. We will now systematically analyse each feature of the dataset. Whenever we work with the "SalePrice"" variable, we will subset `dataset` with the `train$Id`, as `test` has no entries for it.
+
+```{r, echo = TRUE}
+test$SalePrice <- 0 # Temporarily add a "SalePrice" column with zeros to `test`.
+dataset <- rbind(train, test) # Merge `train` and `test` into one `dataset`.
+```
+
+\pagebreak
+
+## Systematic Analysis and Manipulation of all Dataset Features
+
+We will systematically analyse each individual feature of the dataset, deal with missing values, engineering them where deemed useful, and analysing their potential influence on the outcome variable "SalePrice". Some groups of features will be dealt with simultaneously.
+
+
+### MSSubClass: Identifies the type of dwelling involved in the sale.
+
+There are no missing values in MSSubClass.
+```{r}
+summary(dataset$MSSubClass)
+```
+MSSubClass should be a factor variable and we therefore change it accordingly.
+
+```{r}
+dataset$MSSubClass <- as.factor(dataset$MSSubClass)
+```
+
+We plot "MSSubClass" (in the `train$Id` subset of `dataset`) versus "SalePrice" and observe that some of the most expensive houses are from the "20", "50", and "60" category of MSSubClass. "20" are "1-STORY 1946 & NEWER ALL STYLES", "50" are "1-1/2 STORY FINISHED ALL AGES", and "60" are "2-STORY 1946 & NEWER". From the scatterplot we can see that only a few houses are in "MSSubClass" "40" and "180". "MSSubClass" is therefore a variable that denotes type and age of houses. A somewhat troubling part about this feature is the slight underrepresentation of some of its categories, which could be detrimental for predictive purposes.
+
+```{r, echo = FALSE, fig.height = 4, fig.width = 9}
+# Boxplot of MSSubClass vs. SalePrice
+p1 <- dataset[train$Id, ] %>%
+  group_by(MSSubClass) %>%
+  ggplot(aes(x = MSSubClass, y = SalePrice, color = MSSubClass)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_boxplot() +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("MSSubClass vs. SalePrice")
+
+# Scatterplot of MSSubClass vs. SalePrice
+p2 <- dataset[train$Id, ] %>%
+  group_by(MSSubClass) %>%
+  ggplot(aes(x = MSSubClass, y = SalePrice, color = MSSubClass)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("MSSubClass vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### MSZoning: Identifies the general zoning classification of the sale.
+
+There are some missing values in "MSZoning".
+```{r, echo = TRUE}
+summary(dataset$MSZoning)
+```
+
+We plot "MSZoning" versus "SalePrice" and observe that the most expensive houses belong to the "RL" category, while "C (all)" contains less valuable houses. Residential low ("RL") and medium ("RM") density can be predictive of a higher "SalePrice", although floating village residential ("FL") has an even higher median sale price.
+
+```{r, echo  = FALSE, fig.height = 3, fig.width = 6}
+# Boxplot of MSZoning vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MSZoning, y = SalePrice, color = MSZoning)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_boxplot() +
+  ggtitle("MSZoning vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# Scatterplot of MSZoning vs. SalePrice.
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MSZoning, y = SalePrice, color = MSZoning)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("MSZoning vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+``` 
+
+Next we are dealing with missing values in the "MSZoning" column. From the plot below we can see that "RL", or "residential low-density"" is clearly the most common value.
+
+```{r, echo = FALSE, message = FALSE, warning= FALSE, fig.height = 2, fig.width = 4}
+dataset %>%
+  ggplot(aes(x = MSZoning, fill = MSZoning)) +
+  geom_histogram(stat = "count") +
+  ggtitle("MSZoning distribution") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  xlab("Number of houses")
+```
+
+Does "MSZoning" depend on "MSSubClass"? Below we can also see that for "MSSubClass" of "20", "residential low-density" is clearly the most common value, while it is less clear-cut for values of "30" and "70".
+
+```{r, echo = TRUE, message = FALSE, warning= FALSE}
+dataset %>% select(MSSubClass, MSZoning) %>%
+  group_by(MSSubClass, MSZoning) %>%
+  filter(MSSubClass %in% c(20, 30, 70)) %>%
+  count()
+```
+
+As it is not entirely clear which value we should impute, we use kNN-based missing value imputation to fill the missing values instead. The kNN-based model predicts the following values, which we use for imputation.
+
+```{r, echo = TRUE}
+# Build a kNN-model with a k of 9 for MSZoning.
+knn_model <- kNN(dataset, variable = "MSZoning", k = 9)
+
+# Predicted MSZoning values.
+knn_model[knn_model$MSZoning_imp == TRUE, ]$MSZoning
+
+# Missing value imputation.
+dataset$MSZoning[which(is.na(dataset$MSZoning))] <- knn_model[knn_model$MSZoning_imp == TRUE, ]$MSZoning
+```
+
+\pagebreak
+
+### LotFrontage: Linear feet of street connected to property
+
+There are a lot of missing values in "LotFrontage".
+```{r, echo = TRUE}
+summary(dataset$LotFrontage)
+```
+
+We plot "LotFrontage" against "SalePrice" (regular and log-transformed).
+From the plots we can observe that "LotFrontage" doesn't seem to influence "SalePrice" a lot.
+Also, there are two houses with very large "LotFrontage" values, but comparatively low "SalePrice".
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 4, fig.width = 7}
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotFrontage, y = SalePrice)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("LotFrontage vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  geom_smooth(method = "gam", formula = y ~ s(x))
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = log1p(LotFrontage), y = SalePrice)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("Log-transformed LotFrontage vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  geom_smooth(method = "gam", formula = y ~ s(x)) +
+  xlab("Log-transformed LotFrontage")
+
+grid.arrange(p1, p2, nrow = 2)
+
+rm(p1, p2)
+```
+
+
+Still, "LotFrontage" is decently correlated with "SalePrice" , as it can be interpreted as a measure of property size.
+
+```{r, echo = TRUE}
+cor(na.omit(dataset$LotFrontage[train$Id]), dataset[train$Id, ]$SalePrice[-which(is.na(dataset$LotFrontage))])
+```
+Does "LotFrontage" correlate well with "LotArea"? We plot the log-transformed "LotFrontage" against "LotArea".
+Indeed, we find that "LotFrontage" correlates well with "LotArea", although there are some houses with
+a larger deviation.
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, fig.height = 3, fig.width = 6}
+dataset %>%
+  ggplot(aes(x = log1p(LotFrontage), y = log1p(LotArea))) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "gam", formula = y ~ s(x)) +
+  ggtitle("Log-transformed LotFrontage vs. LotArea") +
+  xlab("Log-transformed LotFrontage") +
+  ylab("Log-transformed LotArea") +
+  theme_bw()
+```
+
+We calculate the correlation between "LotFrontage" and "LotArea." The correlation is quite strong, at almost 50% as seen below. This correlation is probably not stronger due to quite a few houses having noticably larger "LotAreas" while having lower "LotFrontage" values and vice-versa. This might potentially throw off predictions of "LotFrontage" based on "LotArea" a lot.
+
+```{r, echo = TRUE}
+cor(na.omit(dataset$LotFrontage), dataset$LotArea[-which(is.na(dataset$LotFrontage))])
+```
+
+Therefore we use kNN-based imputation for "LotFrontage". Plotted below is "LotFrontage" after kNN-based missing value imputation. In addition, the feature encoding is changed to numeric.
+
+```{r, fig.height = 3, fig.width = 6}
+knn_model <- kNN(dataset, variable = "LotFrontage", k = 9)
+
+# Predicted LotFrontage values.
+# knn_model[knn_model$LotFrontage_imp == TRUE, ]$LotFrontage
+
+# We impute the values and plot LotFrontage after imputation.
+dataset$LotFrontage[which(is.na(dataset$LotFrontage))] <-
+  knn_model[knn_model$LotFrontage_imp == TRUE, ]$LotFrontage
+
+dataset %>%
+  ggplot(aes(x = log1p(LotFrontage), y = log1p(LotArea))) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "gam", formula = y ~ s(x)) +
+  ggtitle("Log-transformed LotFrontage vs. LotArea after imputation") +
+  xlab("Log-transformed LotFrontage") +
+  ylab("Log-transformed LotArea") +
+  theme_bw()
+
+# We change variable encoding to numeric
+dataset$LotFrontage <- as.numeric(dataset$LotFrontage)
+```
+
+\pagebreak
+
+### LotArea: Lot size in square feet
+
+There are no missing values in "LotArea".
+
+```{r}
+summary(dataset$LotArea)
+```
+
+"LotArea" is encoded as an integer value, but it should be numeric and is changed accordingly.
+
+```{r, echo = TRUE}
+dataset$LotArea <- as.numeric(dataset$LotArea)
+```
+
+We plot "LotArea" against "SalePrice" (regular and log-transformed).
+As there seem to be some outliers, the log-transformation of "LotArea" helps us visualize
+the relationship of "LotArea" with "SalePrice" better.
+
+```{r, echo = FALSE, fig.height = 4, fig.width = 7}
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotArea, y = SalePrice)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("LotArea vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  geom_smooth(method = "gam", formula = y ~ s(x))
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = log1p(LotArea), y = SalePrice)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("Log-transformed LotArea vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  geom_smooth(method = "gam", formula = y ~ s(x)) +
+  xlab("Log-transformed LotArea")
+
+grid.arrange(p1, p2, nrow = 2)
+
+rm(p1, p2)
+```
+
+"LotArea" is positively correlated with "SalePrice".
+
+```{r, echo = TRUE}
+cor(dataset[train$Id, ]$LotArea, dataset[train$Id, ]$SalePrice)
+```
+
+\pagebreak
+
+### Street: Type of road access to property
+
+There are no missing values in "Street".
+
+```{r}
+summary(dataset$Street)
+```
+
+We plot "Street" against "SalePrice" and observe that the type of road access to a property seems to matter quite a bit in terms of "SalePrice". However, only a few houses have "gravel" values in "Street". "Street" can take either "Gravel" or "Paved" as its value and might indicate a more rural or urban setting, respectively.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 5}
+# Boxplot of Street vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Street, y = SalePrice, color = Street)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_boxplot() +
+  ggtitle("Street vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# Scatterplot of Street vs. SalePrice.
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Street, y = SalePrice, color = Street)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("Street vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### Alley: Type of alley access to property
+
+There is a very large amount of missing values in Alley. We know from the data description that "No alley access" was, rather unfortunately, encoded as "NA". These "NA" entries are producing false missing values.
+
+```{r}
+summary(dataset$Alley)
+```
+
+We fix these wrong "NA" entries by replacing them with "None".
+
+```{r, echo = TRUE}
+dataset$Alley <- str_replace_na(dataset$Alley, replacement = "None")
+dataset$Alley <- factor(dataset$Alley, levels = c("None", "Grvl", "Pave"))
+```
+
+As with "Street", we can see that having a "paved" type of "Alley" access to the property is indicative of a higher "SalePrice". Most houses don't have any "Alley" access, including all of the more expensive houses as well.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 5}
+# Boxplot of Alley vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Alley, y = SalePrice, color = Alley)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_boxplot() +
+  ggtitle("Alley vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# Scatterplot of Alley vs. SalePrice.
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Alley, y = SalePrice, color = Alley)) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  geom_point(alpha = 0.3) +
+  ggtitle("Alley vs. SalePrice") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+
+\pagebreak
+
+### LotShape: General shape of property
+
+There are no missing values in LotShape.
+
+```{r}
+summary(dataset$LotShape)
+```
+
+We plot "LotShape" aganst "SalePrice"  and observe that some of the more expensive houses have a slightly irregular "IR1" "LotShape." A "regular" "Reg" "LotShape" is indicative of a lower "SalePrice", but the category still contains many houses with larger "SalePrice" as well. Only a small number of houses has a really irregular "IR3" "LotShape." Overall, "LotShape" doesn't seem to influence "SalePrice" too much.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Boxplot of LotShape vs. SalePrice
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotShape, y = SalePrice, color = LotShape)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("LotShape vs. SalePrice")
+
+# Scatterplot of LotShape vs. SalePrice
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotShape, y = SalePrice, color = LotShape)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("LotShape vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### LandContour: Flatness of the property
+
+"LandContour" contains no missing values.
+
+```{r}
+summary(dataset$LandContour)
+```
+
+We plot "LandContour" against "SalePrice" and obsere that a "Banked - Quick and significant rise from street grade to building entry" entry in "LandContour" can be indicative of a lower "SalePrice". The most expensive houses are on level, nearly falt terrain. This feature will help to distinguish some of the lower priced houses from the higher priced ones.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of LandContour vs. SalePrice
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LandContour, y = SalePrice, color = LandContour)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("LandContour vs. SalePrice")
+
+# Scatterplot of LandContour vs. SalePrice
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LandContour, y = SalePrice, color = LandContour)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("LandContour vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### Utilities: Type of utilities available
+
+There are a few missing values in "Utilities".
+
+```{r}
+summary(dataset$Utilities)
+```
+
+We plot "Utilities" against "SalePrice" and immediately notice that only a single house has an "NoSeWa" entry.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Boxplot of Utilities vs. SalePrice
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Utilities, y = SalePrice, color = Utilities)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Utilities vs. SalePrice")
+
+# Scatterplot of Utilities vs. SalePrice
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Utilities, y = SalePrice, color = Utilities)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Utilities vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+This feature will not be helpful in "SalePrice" prediction, as "NoSeWa" is woefully underrepresented. We will therefore drop this feature from the dataset.
+
+```{r}
+dataset <- subset(dataset, select = -Utilities)
+```
+
+\pagebreak
+
+### LotConfig: Lot configuration
+
+There are no missing values in "LotConfig".
+
+```{r}
+summary(dataset$LotConfig)
+```
+
+We plot "LotConfig" against "SalePrice" and observe that there doesn't seem to be a strong correlation between them. The "FR3" category might be a little bit underrepresented.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Boxplot of LotConfig vs. SalePrice
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotConfig, y = SalePrice, color = LotConfig)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("LotConfig vs. SalePrice")
+
+# Scatterplot of LotConfig vs. SalePrice
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LotConfig, y = SalePrice, color = LotConfig)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("LotConfig vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### LandSlope: Slope of property
+
+There are no missing values in "LandSlope".
+
+```{r}
+summary(dataset$LandSlope)
+```
+
+We plot "LandSlope" against "SalePrice" and we can see that a gentle "LandSlope" can be predictive of a higher "SalePrice", as this category contains most of the very expensive houses. The medians do not differ very much, however.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Boxplot of LandSlope vs. SalePrice
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LandSlope, y = SalePrice, color = LandSlope)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("LandSlope vs. SalePrice")
+
+# Scatterplot of LandSlope vs. SalePrice
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = LandSlope, y = SalePrice, color = LandSlope)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("LandSlope vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### Neighborhood: Physical locations within Ames city limits
+
+There are no missing values in "Neighborhood".
+
+```{r}
+summary(dataset$Neighborhood)
+```
+
+We plot "Neighborhood" against "SalePrice" and observe that "Northridge" and "Northridge High"" are where some of the most expensive houses are situated. The respective "Neighborhood" is a strong indicator for a houses' "SalePrice".
+
+```{r, echo = FALSE, fig.height = 5, fig.width = 9}
+# Boxplot of Neighborhood vs. SalePrice
+dataset[train$Id, ] %>%
+  ggplot(aes(x = Neighborhood, y = SalePrice, color = Neighborhood)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Boxplot of Neighborhood vs. SalePrice")
+```
+
+\pagebreak
+
+### Condition1: Proximity to various conditions
+
+There are no missing values in "Condition1".
+
+```{r}
+summary(dataset$Condition1)
+```
+
+We plot "Condition1" against "SalePrice" and observe that adjacency to an artery or feeder street, as well as to a railroad may indicate a lower "SalePrice".
+Adjacency to a positive off-site feature can be indicative of an increased value. We also note that some categories are rather sparsely populated.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Boxplot of Condition1 vs. SalePrice
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition1, y = SalePrice, color = Condition1)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Condition1 vs. SalePrice")
+
+# Scatterplot of Condition1 vs. SalePrice
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition1, y = SalePrice, color = Condition1)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Condition1 vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+We will combine the two different road-associated categories ("Artery", "Feedr") and the four different rail-associated categories ("RRAe, "RRAn", "RRNe", "RRNn") into two distinct categories. We will also combine the two positive off-site features.
+
+```{r, echo = TRUE}
+# Before the conversion, we convert the factor into a character vector.
+dataset$Condition1 <- as.character(dataset$Condition1)
+
+# We then merge the categories as described.
+dataset$Condition1[dataset$Condition1 %in% c("Artery", "Feedr")] <- "NearRoad"
+dataset$Condition1[dataset$Condition1 %in% c("RRAe", "RRAn", "RRNe", "RRNn")] <- "NearRailroad"
+dataset$Condition1[dataset$Condition1 %in% c("PosA", "PosN")] <- "NearPosOffSite"
+
+# We convert back into a factor with appropriate levels.
+dataset$Condition1 <- factor(dataset$Condition1, levels = c("Norm",
+                                  "NearRoad", "NearRailroad", "NearPosOffSite"))
+```
+
+The plots of the changed Condition1 feature show that adjacency to a road or railroad tends to decrease "SalePrice", while adjacency to a positive off-site leads to an increase. Almost all expensive houses are in the "Normal" category.
+
+```{r, echo = FALSE}
+# Boxplot of changed Condition1 vs. SalePrice
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition1, y = SalePrice, color = Condition1)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Changed Condition1 vs. SalePrice")
+
+# Scatterplot of changed Condition1 vs. SalePrice
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition1, y = SalePrice, color = Condition1)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Changed Condition1 vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### Condition2: Proximity to various conditions (if more than one is present)
+
+Some houses are adjacent to more than one condition, else they received a "Normal" entry in "Condition2".
+There are no missing values in "Condition2". However, there is no "RRNe" entry.
+
+```{r}
+summary(dataset$Condition2)
+```
+
+We will apply the same changes to "Condition2" as we did to "Condition1".
+
+```{r}
+# Before the conversion, we convert the factor into a character vector.
+dataset$Condition2 <- as.character(dataset$Condition2)
+
+# We then merge the categories as described.
+dataset$Condition2[dataset$Condition2 %in% c("Artery", "Feedr")] <- "NearRoad"
+dataset$Condition2[dataset$Condition2 %in% c("RRAe", "RRAn", "RRNn")] <- "NearRailroad"
+dataset$Condition2[dataset$Condition2 %in% c("PosA", "PosN")] <- "NearPosOffSite"
+
+# We convert back into a factor with appropriate levels.
+dataset$Condition2 <- factor(dataset$Condition2, levels = c("Norm",
+                                        "NearRoad", "NearRailroad", "NearPosOffSite"))
+```
+
+
+We plot the changed "Condition" against "SalePrice". Clearly, being near a positive off-site raises the sale price, while adjacency to a busy road or railroad reduces it.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Boxplot of changed Condition2 vs. SalePrice.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition2, y = SalePrice, color = Condition2)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Changed Condition2 vs. SalePrice")
+```
+
+Are there houses which are adjacent to a road and a railroad simultaneously?
+
+```{r}
+dataset[train$Id, ] %>%
+  filter(Condition1 %in% c("NearRoad", "NearRailroad"),
+         Condition2 %in% c("NearRoad", "NearRailroad")) %>%
+          summarize(avg.value = mean(SalePrice))
+```
+
+Indeed, the average "SalePrice" of houses with a "NearRoad" as well as a "NearRailRoad" entry is rather low.
+We will merge "Condition1" and "Condition2" into a single feature, as "Condition2" has very few entries.
+Prior to this, we will merge "NearRoad" and "NearRailRoad" into a single category, "NearNegOffSite".
+
+```{r}
+dataset$Condition1 <- as.character(dataset$Condition1)
+dataset$Condition1[which(dataset$Condition1 %in% c("NearRoad",
+                                "NearRailroad"))] <- "NearNegOffSite"
+```
+
+Next, we will determine which houses are nearby a second negative or positive off-site and create respective categories. As there is only a single house which is near a positive as well as a negative off-site, we will assign it to the "Normal" group, assuming that the effects cancel each other out. As there are only two houses near two positive off-sites, we assign them to "NearPosOffSite", instead of creating another sparsely populated category. The merged feature "Condition" is added to the `dataset` and "Condition1" and "Condition2" are dropped.
+
+```{r}
+# We convert to character prior to editing.
+dataset$Condition2 <- as.character(dataset$Condition2)
+
+# We assign the respective entries as described.
+dataset$Condition1[which(dataset$Condition2 %in% c("NearRoad",
+                                    "NearRailRoad"))] <- "NearTwoNegOffSites"
+index <- which(dataset$Condition2 %in% c("NearPosOffSite")) 
+dataset$Condition1[index[which(dataset$Condition1[index] == "NearPosOffSite")]] <-
+  "NearPosOffSite"
+dataset$Condition1[index[which(dataset$Condition1[index] == "NearNegOffSite")]] <-
+  "Normal"
+dataset$Condition1[dataset$Condition1 == "Norm"] <- "Normal"
+
+# We convert back into factor and fix levels.
+dataset$Condition1 <- factor(dataset$Condition1, levels = c("Normal",
+                      "NearNegOffSite", "NearTwoNegOffSites", "NearPosOffSite"))
+
+# We rename the engineered feature and remove the previous ones.
+dataset$Condition <- dataset$Condition1
+dataset <- subset(dataset, select = -c(Condition1, Condition2))
+```
+
+We then plot the engineered, merged "Condition" against "SalePrice". From the plots of the engineered "Condition" feature, we can see that being near one or even two negative off-sites (road, railroad) might indicate a lower "SalePrice". Adjacency to a positive off-site is associated with a higher "SalePrice", however all really expensive houses are in the "Normal" category.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of the merged Condition vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition, y = SalePrice, color = Condition)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Engineered Condition vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Condition, y = SalePrice, color = Condition)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Engineered Condition vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### BldgType: Type of dwelling
+
+
+There are no missing values in "BldgType".
+```{r}
+summary(dataset$BldgType)
+```
+
+We plot "BldgType" against "SalePrice" and observe that the most expensive houses are all detached single-family houses ("1Fam"). Even then, there must be other distinguishing features behind those, as the median sale price of "1Fam" houses isn't noticably higher compared to the other categories.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of BldgType vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BldgType, y = SalePrice, color = BldgType)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("BldgType vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BldgType, y = SalePrice, color = BldgType)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("BldgType vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### HouseStyle: Style of dwelling
+
+There are no missing values in "HouseStyle".
+```{r}
+summary(dataset$HouseStyle)
+```
+
+We plot "HouseStyle" against "SalePrice" and observe that HouseStyle doesn't reveal very much about "SalePrice", but unfinished 1.5 and 2.5 storey houses tend to have lower "SalePrice" compared to completed ones.
+Unsurprisingly, the most expensive houses are in the "2Story" category, while another large set of expensve houses are in the "1Story" category.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 8}
+# Boxplot of HouseStyle vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = HouseStyle, y = SalePrice, color = HouseStyle)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("HouseStyle vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = HouseStyle, y = SalePrice, color = HouseStyle)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("HouseStyle vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### OverallQual: Rates the overall material and finish of the house
+
+There are no missing values in "OverallQual".
+
+```{r}
+summary(dataset$OverallQual)
+```
+
+"OverallQual" should be a numeric variable, not an integer.
+
+```{r}
+dataset$OverallQual <- as.numeric(dataset$OverallQual)
+```
+
+
+We plot "OverallQual" against "SalePrice" and notice its tremendous influence on a houses' "SalePrice". In the highest category, 10, there are 2 houses with unexpectedly low, and 2 houses with extremely high sale prices. This increases the range a lot. "OverallQual" will be very important for predicting a houses value.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 8}
+# Boxplot of OverallQual vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallQual, y = SalePrice, color = factor(OverallQual))) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(1, 10, 1)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("OverallQual vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallQual, y = SalePrice, color = factor(OverallQual))) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(1, 10, 1)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("OverallQual vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+There are only a few houses in the lowest "OverallQual" categories 1 and 2. Additionally, the higher quality levels show quite a large range of values.
+
+
+
+\pagebreak
+
+### OverallCond: Rates the overall condition of the house
+
+
+There are no missing values in "OverallCond".
+
+```{r}
+summary(dataset$OverallCond)
+```
+
+"OverallCond" should be a numeric variable, not an integer.
+
+```{r}
+dataset$OverallCond <- as.numeric(dataset$OverallCond)
+```
+
+
+We plot "OverallCond" against "SalePrice". Contrary to intuition, "OverallCond" is much less predictive of a houses' "SalePrice" and there is not a single house with a "very excellent" condition.
+We observe that the most expensive houses fall between 4 - 9, with 5 having most of them. "OverallCond" below 5 holds houses with lower "SalePrice". The lower two levels hold only very few houses.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 8}
+# Boxplot of OverallCond vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallCond, y = SalePrice, color = factor(OverallCond))) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(1, 9, 1)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of OverallCond vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = OverallCond, y = SalePrice, color = factor(OverallCond))) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(1, 9, 1)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Boxplot of OverallCond vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+
+\pagebreak
+
+### YearBuilt: Original construction date
+
+There are no missing values in "YearBuilt".
+
+```{r}
+summary(dataset$YearBuilt)
+```
+
+We plot "YearBuilt" against "SalePrice" and observe that "SalePrice" is influenced by "YearBuilt", especially houses built after the 1950's tend to go up in value as visualized by the models.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 8}
+# Scatterplot of YearBuilt. 
+dataset[train$Id, ] %>%
+  ggplot(aes(x = YearBuilt, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(1870, 2010, 10)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("YearBuilt vs. SalePrice") +
+  geom_smooth(method = "gam", formula = y ~ s(x)) +
+  geom_smooth(method = "lm", color = "red") +
+  annotate("text", x = 1910, y = 700000, label = "Correlation between YearBuilt and SalePrice: 0.52") +
+  annotate("text", x = 1890, y = 225000, label = "Generalized additive model") +
+  annotate("text", x = 1890, y = 40000, label = "Linear model")
+```
+
+```{r}
+# There is a large positive correlation between "YearBuilt" and "SalePrice."
+cor(dataset[train$Id, ]$YearBuilt, dataset[train$Id, ]$SalePrice)
+```
+
+\pagebreak
+
+### YearRemodAdd: Remodel date (same as construction date if no remodeling or additions)
+
+There are no missing values in "YearRemodAdd".
+
+```{r}
+summary(dataset$YearRemodAdd)
+```
+
+We plot "YearRemoddAdd" against "SalePrice" and observe that "YearRemodAdd" has a very similar correlation with "SalePrice" compared with "YearBuilt." We also note that remodellings were only recorded starting 1950.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 8}
+# Scatterplot of YearRemodAdd. 
+dataset[train$Id, ] %>%
+  ggplot(aes(x = YearRemodAdd, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(1950, 2010, 10)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of YearRemodAdd vs. SalePrice") +
+  geom_smooth(method = "lm", color = "red") +
+  annotate("text", x = 1970, y = 700000, label = "Correlation between YearRemodAdd and SalePrice: 0.50")
+```
+
+There is a large positive correlation between "YearRemodAdd" and "SalePrice".
+
+```{r}
+cor(dataset[train$Id, ]$YearRemodAdd, dataset[train$Id, ]$SalePrice)
+```
+
+There is also a large correlation between "YearRemodAdd" and "YearBuilt".
+
+```{r}
+cor(dataset$YearRemodAdd, dataset$YearBuilt)
+```
+
+"YearRemodAdd" correlates > 61% with "YearBuilt." We plot the two variables against each other. From the plot it seems that for all houses built before 1950, even if there actually wasn't any remodelling done, they received an entry in "YearRemodAdd" at 1950 (see red dashed line).
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 8}
+# Scatterplot of YearBuilt vs. YearRemodAdd. 
+dataset[train$Id, ] %>%
+  ggplot(aes(x = YearRemodAdd, y = YearBuilt)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(breaks = seq(1870, 2010, 10)) +
+  scale_x_continuous(breaks = seq(1870, 2010, 10)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("YearRemodAdd vs. YearBuilt") +
+  geom_vline(xintercept = 1950, color = "red", linetype = 2)
+```
+
+
+Most houses have identical "YearBuilt" and "YearRemodAdd" values, since  no remodellings were actually done.
+For predictive purposes, this variable isn't very helpful and is therefore dropped.
+
+```{r}
+dataset <- subset(dataset, select = -YearRemodAdd)
+```
+
+\pagebreak
+
+### RoofStyle: Type of roof
+
+There are no missing values in "RoofStyle".
+
+```{r}
+summary(dataset$RoofStyle)
+```
+
+
+We plot "RoofStyle" against "SalePrice" and observe that the style of roof is not very predictive of "SalePrice", but most expensive houses are either in the "Gable" or "Hip" category. The "Shed" category is perhaps somewhat underrepresented.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of RoofStyle vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = RoofStyle, y = SalePrice, color = RoofStyle)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("RoofStyle vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = RoofStyle, y = SalePrice, color = RoofStyle)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("RoofStyle vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+
+### RoofMatl: Roof material
+
+There are no missing values in "RoofMatl".
+
+```{r}
+summary(dataset$RoofMatl)
+```
+
+We plot "RoofMatl" against "SalePrice". From the plots we can see that there are very few houses with roof materials differing from the standard composite shingle.
+Most categories are populated by very few houses and are widely spread. It might be difficult to derive much predictive value from this feature as there are not enough data points in most categories.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of RoofMatl vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = RoofMatl, y = SalePrice, color = RoofMatl)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("RoofMatl vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = RoofMatl, y = SalePrice, color = RoofMatl)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("RoofMatl vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### Exterior1st: Exterior covering on house
+
+There is one missing value in "Exterior1st".
+
+```{r}
+summary(dataset$Exterior1st)
+```
+
+We plot "Exterior1st" against "SalePrice". From the plots it becomes apparent that asbestos shingles and asphalt shingles are mostly used with cheaper houses.
+Before we deal with the missing value, we take a look at "Exterior2nd" as well.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 8}
+# Boxplot of Exterior1st vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Exterior1st, y = SalePrice, color = Exterior1st)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Exterior1st vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Exterior1st, y = SalePrice, color = Exterior1st)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Exterior1st vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### Exterior2nd: Exterior covering on house (if more than one material)
+
+There is one missing value in "Exterior2nd".
+
+```{r}
+summary(dataset$Exterior2nd)
+```
+
+From the plots it becomes apparent that asbestos shingles and asphalt shingles are mostly used with cheaper houses.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 8}
+# Boxplot of Exterior2nd vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Exterior2nd, y = SalePrice, color = Exterior2nd)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Exterior2nd vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Exterior2nd, y = SalePrice, color = Exterior2nd)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Exterior2nd vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+
+There is a missing value in "Exterior1st" and "Exterior2nd", is it the same house? It turns out that it is.
+
+```{r}
+dataset[which(is.na(dataset$Exterior1st)), ]$Exterior1st
+dataset[which(is.na(dataset$Exterior2nd)), ]$Exterior2nd
+```
+
+We use kNN-based imputation for "Exterior1st" and "Exterior2nd". The model predicts "Stucco" for this house.
+
+```{r}
+# kNN-based model for Exterior1st and 2nd.
+knn_model <- kNN(dataset, variable = c("Exterior1st", "Exterior2nd"), k = 9)
+
+# Predicted Exerior1st value.
+knn_model[knn_model$Exterior1st_imp == TRUE, ]$Exterior1st
+
+# Predicted Exerior2nd value.
+knn_model[knn_model$Exterior2nd_imp == TRUE, ]$Exterior2nd
+
+# Missing value imputation.
+dataset$Exterior1st[2152] <- knn_model[knn_model$Exterior1st_imp == TRUE, ]$Exterior1st
+dataset$Exterior2nd[2152] <- knn_model[knn_model$Exterior2nd_imp == TRUE, ]$Exterior2nd
+```
+
+\pagebreak
+
+### MasVnrType: Masonry veneer type
+
+
+There are some missing values in "MasVnrType".
+
+```{r}
+summary(dataset$MasVnrType)
+```
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of MasVnrType vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrType, y = SalePrice, color = MasVnrType)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("MasVnrType vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrType, y = SalePrice, color = MasVnrType)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("MasVnrType vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+We will use kNN-based predictions to impute the missing values and re-plot the variable against "SalePrice".
+
+```{r}
+# kNN-model.
+knn_model <- kNN(dataset, variable = "MasVnrType", k = 9)
+
+# Predicted "MasVnrType" values.
+knn_model[knn_model$MasVnrType_imp == TRUE, ]$MasVnrType
+
+# Missing value imputation of MasVnrType
+dataset[which(is.na(dataset$MasVnrType)), ]$MasVnrType <-
+              knn_model[knn_model$MasVnrType_imp == TRUE, ]$MasVnrType
+```
+
+
+From the plots we can see that "Stone" can be predictive of a higher "SalePrice", as it has the highest median value. "BrkCmn" is less populated with values, but shows the lowest median value.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of MasVnrType vs. SalePrice after missing value imputation.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrType, y = SalePrice, color = MasVnrType)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("MasVnrType vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrType, y = SalePrice, color = MasVnrType)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("MasVnrType vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### MasVnrArea: Masonry veneer area in square feet
+
+There are some missing values in "MasVnrArea", presumably the same houses that had missing values in "MasVnrType".
+
+```{r}
+summary(dataset$MasVnrArea)
+```
+
+"MasVnrArea" should be a numeric variable.
+
+```{r}
+dataset$MasVnrArea <- as.numeric(dataset$MasVnrArea)
+```
+
+From the plot we can see that many houses actually have exactly zero "MasVnrArea", which makes sense as there's a level "None" in "MasVnrType".
+
+```{r, echo = FALSE, message = FALSE, Warning = FALSE, fig.height = 3, fig.width = 6}
+# Scatterplot of MasVnrArea vs. SalePrice.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrArea, y = SalePrice, color = MasVnrArea)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("MasVnrArea vs. SalePrice") +
+  geom_smooth(method = "lm")
+```
+
+We will use kNN-based predictions to impute the missing values.
+
+```{r, width = 60}
+# kNN-model.
+knn_model <- kNN(dataset, variable = "MasVnrArea", k = 9)
+
+# Predicted "MasVnrArea" values.
+knn_model[knn_model$MasVnrArea_imp == TRUE, ]$MasVnrArea
+
+# Missing value imputation of MasVnrArea
+dataset[which(is.na(dataset$MasVnrArea)), ]$MasVnrArea <- knn_model[knn_model$MasVnrArea_imp == TRUE, ]$MasVnrArea
+```
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Scatterplot of MasVnrArea vs. SalePrice after missing value imputation.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = MasVnrArea, y = SalePrice, color = MasVnrArea)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Scatterplot of MasVnrArea vs. SalePrice after missing value imputation") +
+  geom_smooth(method = "lm")
+
+```
+
+It is however still possible that there are non-zero "MasVnrArea" values where "MasVnrType" is equal to "None". We will check for this and set all of these cases to zero. Indeed, several houses have an entry in "MasVnrArea" while having "MasVnrType" of "None". As it is unclear which value might be wrong, we will set "MasVnrArea" to zero in these cases. The opposite might also be possible, where a house has a type other than "None", but has an area value larger than zero. Fot hose cases we will change "MasVnrType" to "None".
+
+```{r}
+# There are houses with non-zero MasVnrArea but "None" as MasVnrType.
+# dataset[which(dataset$MasVnrArea != 0 & dataset$MasVnrType == "None"), ]
+
+# We take the index.
+ind1 <- dataset[which(dataset$MasVnrArea != 0 & dataset$MasVnrType == "None"), ]$Id
+
+
+# There are also houses with zero MasVnrArea and anything but "None" as MasVnrType.
+# dataset[which(dataset$MasVnrArea == 0 & dataset$MasVnrType != "None"), ]
+
+# We take the index as well.
+ind2 <- dataset[which(dataset$MasVnrArea == 0 & dataset$MasVnrType != "None"), ]$Id
+
+
+# We will set the area to zero and the type to "None" in these cases.
+dataset$MasVnrArea[ind1] <- 0
+dataset$MasVnrType[ind2] <- "None"
+
+```
+
+\pagebreak
+
+### ExterQual: Evaluates the quality of the material on the exterior 
+
+
+There are no missing values in "ExterQual".
+
+```{r}
+summary(dataset$ExterQual)
+```
+
+We plot "ExterQual" against "SalePrice" and observe that "ExterQual" is a relatively good predictor of "SalePrice", although this isn't immediately very clear due to factor level order.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of ExterQual vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterQual, y = SalePrice, color = ExterQual)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("ExterQual vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterQual, y = SalePrice, color = ExterQual)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("ExterQual vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+
+We transform this qualitative ordinal factor into a numeric containing the present levels and plot it again. It now becomes easily apparent that "ExterQual" strongly correlates with "SalePrice". 
+
+```{r}
+dataset$ExterQual <- as.numeric(factor(dataset$ExterQual, levels=c("Fa",
+                                                    "TA", "Gd", "Ex")))
+```
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Scatterplot of changed ExterQual vs. SalePrice
+dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterQual, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Changed ExterQual vs. SalePrice") +
+  geom_smooth(method = "lm")
+```
+
+\pagebreak
+
+### ExterCond: Evaluates the quality of the material on the exterior 
+
+There are no missing values in "ExterCond".
+
+```{r}
+summary(dataset$ExterCond)
+```
+
+We plot "ExterCond" against "SalePrice" and observe that only a few houses have a "poor" or "excellent" "ExterCond." "ExterCond" is a a weaker predictor of "SalePrice" compared to "ExterQual", similar to "OverallQual" vs. "OverallCond".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of ExterCond vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterCond, y = SalePrice, color = ExterCond)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("ExterCond vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterCond, y = SalePrice, color = ExterCond)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("ExterCond vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+We transform this qualitative ordinal factor into a numeric containing the present levels and plot it again. We can see that unlike with "ExterQual", "ExterCond" is not as straightforward a predictor of "SalePrice", as a "typical" value contains most expensive houses. The best and worst category is very sparsely populated. "ExterCond" might be a questionable predictor for "salePrice".
+
+```{r}
+dataset$ExterCond <- as.numeric(factor(dataset$ExterCond, levels=c("Po",
+                                              "Fa", "TA", "Gd", "Ex")))
+```
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Scatterplot of changed ExterCond vs. SalePrice
+dataset[train$Id, ] %>%
+  ggplot(aes(x = ExterCond, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Changed ExterCond vs. SalePrice") +
+  geom_smooth(method = "lm")
+```
+
+
+\pagebreak
+
+### Foundation: Type of foundation
+
+There are no missing values in "Foundation".
+
+```{r}
+summary(dataset$Foundation)
+```
+
+When plotting "Foundation" against "SalePrice" we notice that stone and wood "Foundation" values are relatively rare. "Poured concrete"" ("PConc") seems to be the material of choice for houses with higher "SalePrice", while "Slab" seems to be associated with lower values.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of Foundation vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Foundation, y = SalePrice, color = Foundation)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Foundation vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Foundation, y = SalePrice, color = Foundation)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Foundation vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### BsmtQual: Evaluates the height of the basement
+
+There are missing values in "BsmtQual".
+
+```{r}
+summary(dataset$BsmtQual)
+```
+
+From the data description we know that "No Basement" was encoded as "NA" in this variable. Also, there is no house with a "poor" "BsmtQual". We will therefore replace "NA" with "None" and fix the factor levels accordingly.
+
+```{r}
+# We convert to character prior to editting and revert to a factor with appropriate levels.
+dataset$BsmtQual <- as.character(dataset$BsmtQual)
+dataset$BsmtQual <- str_replace_na(dataset$BsmtQual, replacement = "None")
+dataset$BsmtQual <- factor(dataset$BsmtQual, levels = c("None",
+                                                  "Fa", "TA", "Gd", "Ex"))
+```
+
+From the plots we can see that houses with no basement or a basement with only "fair" quality come with
+much lower "SalePrice". This might also be because a higher "BsmtQual" indicates a greater height of the basement, whichmight be indicative of a larger house in general.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of BsmtQual vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtQual, y = SalePrice, color = BsmtQual)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BsmtQual vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtQual, y = SalePrice, color = BsmtQual)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BsmtQual vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+We plot "BsmtQual" vs. "GrLivArea", as an indication of house size. There seems to be a slight relationship.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 4}
+dataset %>%
+  ggplot(aes(x = BsmtQual, y = GrLivArea, color = BsmtQual)) +
+  geom_boxplot() +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BsmtQual vs. GrLivArea")
+```
+
+\pagebreak
+
+### BsmtCond: Evaluates the general condition of the basement
+
+There are missing values in "BsmtCond". From the data description we know that "No Basement" was encoded as "NA" in this variable. Also, not a single house has an "excellent" basement condition.
+
+```{r}
+summary(dataset$BsmtCond)
+```
+
+
+We will therefore replace "NA" with "None" and fix the factor levels accordingly.
+
+```{r}
+dataset$BsmtCond <- as.character(dataset$BsmtCond)
+dataset$BsmtCond <- str_replace_na(dataset$BsmtCond, replacement = "None")
+dataset$BsmtCond <- factor(dataset$BsmtCond, levels = c("None",
+                                                  "Po", "Fa", "TA", "Gd"))
+```
+
+From plotting "BsmtCond" against "SalePrice" we can tell that "BsmtCond" seems to be a good indicator of "SalePrice. Although there are only a few houses with a really "poor" basement condition, all of these houses have exceptionally low "SalePrice". Overall, a "typical" or "good" basement condition is important for a houses "SalePrice.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of BsmtCond vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtCond, y = SalePrice, color = BsmtCond)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BsmtCond vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtCond, y = SalePrice, color = BsmtCond)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BsmtCond vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### BsmtExposure: Refers to walkout or garden level walls
+
+
+There are missing values in "BsmtExposure". From the data description we know that "No Basement" was encoded as "NA" in this variable. "No exposure" is encoded as "No"
+
+```{r}
+summary(dataset$BsmtExposure)
+```
+
+We will therefore replace "NA" with "None" and fix the factor levels accordingly.
+
+```{r}
+dataset$BsmtExposure <- as.character(dataset$BsmtExposure)
+dataset$BsmtExposure <- str_replace_na(dataset$BsmtExposure, replacement = "None")
+dataset$BsmtExposure <- factor(dataset$BsmtExposure, levels = c("None",
+                                                          "No", "Mn", "Av", "Gd"))
+```
+
+From the plots we can see that greater basement exposure correlates slightly with larger "SalePrice".
+Houses with no basement ("None") have the lowest "SalePrice".
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of BsmtExposure vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtExposure, y = SalePrice, color = BsmtExposure)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BsmtExposure vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtExposure, y = SalePrice, color = BsmtExposure)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BsmtExposure vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### BsmtFinType1: Rating of basement finished area
+
+There are missing values in "BsmtExposure". From the data description we know that "No Basement" was encoded as "NA" in this variable.
+
+```{r}
+summary(dataset$BsmtFinType1)
+```
+
+We will therefore replace "NA" with "None" and fix the factor levels accordingly.
+
+```{r}
+dataset$BsmtFinType1 <- as.character(dataset$BsmtFinType1)
+dataset$BsmtFinType1 <- str_replace_na(dataset$BsmtFinType1, replacement = "None")
+dataset$BsmtFinType1 <- factor(dataset$BsmtFinType1, levels = c("None", "Unf",
+                                              "LwQ", "Rec", "BLQ", "ALQ", "GLQ"))
+```
+
+We plot "BsmtFinType1" against "SalePrice" and observe that houses with unfinished or good quality living quarter type of finish come with higher "SalePrice".
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of BsmtFinType1 vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtFinType1, y = SalePrice, color = BsmtFinType1)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BsmtFinType1 vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtFinType1, y = SalePrice, color = BsmtFinType1)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BsmtFinType1 vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### BsmtFinType2: Rating of basement finished area (if multiple types)
+
+There are missing values in BsmtExposure. From the data description we know that "No Basement" was encoded as "NA" in this variable.
+
+```{r}
+summary(dataset$BsmtFinType2)
+```
+
+We will therefore replace "NA" with "None" and fix the factor levels accordingly.
+
+```{r}
+dataset$BsmtFinType2 <- as.character(dataset$BsmtFinType2)
+dataset$BsmtFinType2 <- str_replace_na(dataset$BsmtFinType2, replacement = "None")
+dataset$BsmtFinType2 <- factor(dataset$BsmtFinType2, levels = c("None",
+                                        "Unf", "LwQ", "Rec", "BLQ", "ALQ", "GLQ"))
+```
+
+From the plots we can see that houses with unfinished type of finish come with higher "SalePrice".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of BsmtFinType2 vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtFinType2, y = SalePrice, color = BsmtFinType2)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BsmtFinType2 vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = BsmtFinType2, y = SalePrice, color = BsmtFinType2)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BsmtFinType2 vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### Basement square feet variables
+
+We will deal with all basement-area related variables at the same time here. We replace the missing Bsmt-values of house 2121 with 0, as this house has no basement.
+
+```{r}
+# dataset[2121, ] # This house actually has no basement.
+# We impute zeroes for these variables.
+
+dataset$BsmtFinSF1[2121] <- 0
+dataset$BsmtFinSF2[2121] <- 0
+dataset$BsmtUnfSF[2121] <- 0
+dataset$TotalBsmtSF[2121] <- 0
+```
+
+We replace the remaining NAs in "BsmtFullBath" and "BsmtHalfBath" with 0 as the respective houses have no basement.
+
+```{r}
+# dataset[which(is.na(dataset$BsmtFullBath)), ] # These houses have no basement.
+
+dataset$BsmtFullBath[is.na(dataset$BsmtFullBath)] <- 0
+dataset$BsmtHalfBath[is.na(dataset$BsmtHalfBath)] <- 0
+```
+
+What is the correlation between "TotalBsmtSF" and the individual measurements of basement square feet? It turns out that the correlation is exactly 1, so "TotalBsmtSF" consists of all the individual values.
+
+```{r}
+# Correlation between "TotalBsmtSF" and the individual variables is exactly 1.
+cor(dataset$TotalBsmtSF, (dataset$BsmtFinSF1 + dataset$BsmtFinSF2 + dataset$BsmtUnfSF))
+```
+
+Correlation between the individual variables and "SalePrice": They are all mostly weak individually, while "TotalBsmtSF" is highly correlated with "SalePrice".
+
+```{r}
+# Correlation between "TotalBsmtSF" and "SalePrice".
+cor(dataset[train$Id, ]$TotalBsmtSF, dataset[train$Id, ]$SalePrice)
+
+# Correlation between "BsmtFinSF1" and "SalePrice".
+cor(dataset[train$Id, ]$BsmtFinSF1, dataset[train$Id, ]$SalePrice)
+
+# Correlation between "BsmtFinSF2" and "SalePrice".
+cor(dataset[train$Id, ]$BsmtFinSF2, dataset[train$Id, ]$SalePrice)
+
+# Correlation between "BsmtUnfSF" and "SalePrice", which is relatively strong.
+cor(dataset[train$Id, ]$BsmtUnfSF, dataset[train$Id, ]$SalePrice) 
+```
+
+The individual basement area variables seem to be redundant, but we observed that having an unfinished basement can be indiciative of a higher "SalePrice" earlier (e.g. relatively large correlation between "BsmtUnfSF" and "SalePrice"). Nevertheless, we will remove the individual measurements.
+
+```{r}
+# Removing the individual basement square feet variables.
+dataset <- subset(dataset, select = -c(BsmtFinSF1, BsmtFinSF2, BsmtUnfSF))
+```
+
+\pagebreak
+
+### Bathroom variables
+
+The number of total bathrooms can be indicative of a houses size. In the dataset there are 4 different variables describing bathrooms. It could be useful to combine these into a single feature. While each bathroom variable individually has little influence on "SalePrice", combined they might become a stronger predictor. We will value different types of bath according to their "SalePrice" correlation ratio compared to "FullBaths". As shown below, we will create a new variable "TotalBaths" and drop the individual variables afterwards. THe contribution of different types of baths (i.e. "FullBath", "HalfBath", "BsmtFullBath", "BsmtHalfBath") are weighted according to their correlation with "SalePrice".
+
+```{r}
+# Full bathrooms have the strongest correlation with "SalePrice"
+cor(dataset[train$Id, ]$FullBath, dataset[train$Id, ]$SalePrice) 
+
+# Half baths are much less valued, about half as much.
+cor(dataset[train$Id, ]$HalfBath, dataset[train$Id, ]$SalePrice) 
+
+# We calculate the ratio of the correlations of Full and Half baths to "SalePrice" to use
+# as a weighting factor below.
+(FullToHalfBathRatio <- cor(dataset[train$Id, ]$HalfBath,
+                            dataset[train$Id, ]$SalePrice) /
+                              cor(dataset[train$Id, ]$FullBath,
+                                dataset[train$Id, ]$SalePrice)) 
+
+# Basement full and especially half baths have weaker correlation with "SalePrice".
+cor(dataset[train$Id, ]$BsmtFullBath, dataset[train$Id, ]$SalePrice)
+cor(dataset[train$Id, ]$BsmtHalfBath, dataset[train$Id, ]$SalePrice)
+
+# Weighting factor for "FullBath" to "BsmtFullBath." A basement full bath
+# receives a weighting factor of 0.3971685 as calculated below.
+(FullToBsmtFullBathRatio <- cor(dataset[train$Id, ]$BsmtFullBath,
+                                dataset[train$Id, ]$SalePrice) /
+                                  cor(dataset[train$Id, ]$FullBath,
+                                    dataset[train$Id, ]$SalePrice))
+
+# Weighting factor for "FullBath" to "BsmtHalfBath." This actualy returns
+# a negative value! We rather remove basement half baths from the calculations.
+(FullToBsmtHalfBathRatio <- cor(dataset[train$Id, ]$BsmtHalfBath,
+                                dataset[train$Id, ]$SalePrice) /
+                                  cor(dataset[train$Id, ]$FullBath,
+                                      dataset[train$Id, ]$SalePrice))
+
+# Only very few houses even have "BsmtHalfBaths".
+summary(dataset$BsmtHalfBath)
+
+# We will create a variable "TotalBaths", that sums up the various types of baths
+# into one variable, taking into consideration the different correlations to "SalePrice"
+# for full and half baths. We don't add "BsmtHalfBaths", as their correlation
+# with "SalePrice" is very low/negative and only very few houses have any.
+dataset$TotalBaths <- dataset$FullBath +
+  (dataset$BsmtFullBath * FullToBsmtFullBathRatio) +
+  (dataset$HalfBath * FullToHalfBathRatio)
+
+# Correlation of "TotalBaths" with "SalePrice" is higher than of just "FullBaths".
+cor(dataset[train$Id, ]$TotalBaths, dataset[train$Id, ]$SalePrice) 
+
+# The new TotalBaths variable has a correlation of almost 70% with "SalePrice".
+
+# We can remove the previous bath variables.
+dataset <- subset(dataset, select = -c(FullBath, HalfBath, BsmtFullBath, BsmtHalfBath))
+
+# Cleanup.
+rm(FullToBsmtFullBathRatio, FullToBsmtHalfBathRatio, FullToHalfBathRatio)
+```
+
+The combination of 4 different bath variables, "TotalBaths", has a strong relationship with "SalePrice", as the total number of bathrooms is in itself indicative of a houses' size.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Scatterplot of engineered TotalBaths vs. SalePrice.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = TotalBaths, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(0, 5, 0.25)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Engineered TotalBaths vs. SalePrice") +
+  geom_smooth(method = "lm")
+```
+
+\pagebreak
+
+### Heating: Type of heating
+
+
+There are no missing values in Heating, but there is only a single house with "Floor" and 2 houses with "OthW" heating.
+
+```{r}
+summary(dataset$Heating)
+```
+
+From the plots we can see that the house with "floor furnace" "Heating" has a low "SalePrice" and that basically any "Heating" other than "GasA" and "GasW" appears to be associated with lower "SalePrice" as well. Most categories are woefully underrepresented, however.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of Heating vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Heating, y = SalePrice, color = Heating)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Heating vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Heating, y = SalePrice, color = Heating)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Heating vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+
+\pagebreak
+
+### HeatingQC: Heating quality and condition
+
+There are no missing values in "HeatingQC". There are only a few houses with a "poor" "HeatingQC".
+
+```{r}
+summary(dataset$HeatingQC)
+```
+
+From the plots we an see that very few houses have poor quality heating and that an excellent quality of heating is associated with a higher "SalePrice". The quality of the heating seems to be more important than its type.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of HeatingQC vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = HeatingQC, y = SalePrice, color = HeatingQC)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("HeatingQC vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = HeatingQC, y = SalePrice, color = HeatingQC)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("HeatingQC vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+We transform this qualitative ordinal factor into a numeric containing the present levels and plot it again. 
+```{r, fig.height = 3, fig.width = 7}
+dataset$HeatingQC <- as.numeric(factor(dataset$HeatingQC,
+                                       levels = c("Po", "Fa",
+                                        "TA", "Gd", "Ex")))
+
+dataset[train$Id, ] %>%
+  ggplot(aes(x = HeatingQC, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("HeatingQC vs. SalePrice") +
+  geom_smooth(method = "lm")
+```
+
+
+\pagebreak
+
+### CentralAir: Central air conditioning
+
+There are no missing values in "CentralAir".
+
+```{r}
+summary(dataset$CentralAir)
+```
+
+
+Clearly, having central air conditioning positively influences sale price.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of CentralAir vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = CentralAir, y = SalePrice, color = CentralAir)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("CentralAir vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = CentralAir, y = SalePrice, color = CentralAir)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("CentralAir vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### Electrical: Electrical system
+
+
+There is a missing value in "Electrical".
+
+```{r}
+summary(dataset$Electrical)
+```
+
+
+```{r, fig.height = 3, fig.width = 5}
+# There is one missing value in "Electrical".
+which(is.na(dataset$Electrical))
+
+# The house with the missing "Electrical" value seems pretty normal.
+# dataset[1380, ] 
+
+# From the plot we can see that "SBrkr" or "standard circuit breakers"" are the most common value.
+plot(dataset[, "Electrical"],
+     col = "orange",
+     main = "Electrical",
+     ylab = "Count"
+)
+
+# We will use kNN-based predictions to impute the missing values.
+knn_model <- kNN(dataset, variable = "Electrical", k = 9)
+
+# The kNN-model predicts "SBrkr", the most common type of "Electrical".
+knn_model[knn_model$Electrical_imp == TRUE, ]$Electrical
+
+# Missing value imputation of "Electrical".
+dataset[which(is.na(dataset$Electrical)), ]$Electrical <-
+  knn_model[knn_model$Electrical_imp == TRUE, ]$Electrical
+```
+
+
+From the plots it becomes apparent that "SBrkr" is not only the most common, but also the most valuable kind of "Electrical".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of Electrical vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Electrical, y = SalePrice, color = Electrical)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Electrical vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Electrical, y = SalePrice, color = Electrical)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Electrical vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### 1stFlrSF: First Floor square feet, 2ndFlrSF: Second floor square feet, LowQualFinSF: Low quality finished square feet (all floors)
+
+There are no missing values in these 3 variables.
+
+```{r}
+summary(dataset$X1stFlrSF)
+summary(dataset$X2ndFlrSF)
+summary(dataset$LowQualFinSF)
+```
+
+
+The above ground living area is composed of 1StFlrSF, 2ndFlrSF and LowQualFinSF as evidenced by their combined correlation with "GrLivArea" of exactly 1. We will therefore drop the redundant variables to avoid colinearity.
+
+```{r}
+# Correlation between "GrLivArea" and the combined individual variables.
+cor(dataset$GrLivArea, (dataset$X1stFlrSF + dataset$X2ndFlrSF + dataset$LowQualFinSF))
+
+# We drop the redundant variables.
+dataset <- subset(dataset, select = -c(X1stFlrSF, X2ndFlrSF, LowQualFinSF))
+```
+
+\pagebreak
+
+### GrLivArea: Above grade (ground) living area square feet
+
+There are no missing values in "GrLivArea".
+
+```{r}
+summary(dataset$GrLivArea)
+```
+
+We plot "GrLivArea" against "SalePrice" and observe its strong, near-linear influence on "SalePrice". Additionally, we change this variables' encoding into numeric. It comes as no big surprise that the above ground living area of a house is extremely impactful on its value. 
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# We change variable encoding to numeric
+dataset$GrLivArea <- as.numeric(dataset$GrLivArea)
+
+
+dataset[train$Id, ] %>%
+  ggplot(aes(x = GrLivArea, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("GrLivArea vs. SalePrice") +
+  geom_smooth(method = "lm")
+```
+
+We also observe two houses with enormous living space, but rather low "SalePrice". These two might be outliers, however upon closer inspection it becomes apparent that both houses have a "SaleType" of "New" and a "SaleCondition" of "Partial". From the data description we know that a "Partial" "SaleCondition" implies that a house was not completed when last assessed. It is therefore possible that these houses' actual value has not yet been updated to reflect their actual worth. Other parameters like "Excellent" "OverallQuality" and "Good" "OverallCond" would also suggest a more expensive "SalePrice" for these houses. While the data description does not explicitly state this, it is conceivable that these houses were actually sold "partially", as in that both houses are "2Story" "1Fam" kind of buildings and that maybe only one of the possibly several appartments within these houses was sold at that price. Whatever might be the case, we will keep these houses in the dataset, as they don't influence the relationship between "GrLivArea" and "SalePrice" too much.
+
+```{r}
+# Which are the two "outlier" houses?
+which(dataset$GrLivArea > 4500 & dataset$SalePrice < 250000 & dataset$Id %in% train$Id)
+
+# We take a look at these houses and take note of their "SaleCondition" and "SaleType".
+# Both are new homes with partial "SaleType".
+# dataset[524, ]
+# dataset[1299, ]
+```
+
+\pagebreak
+
+### Bedroom: Bedrooms above grade (does NOT include basement bedrooms)
+
+There are no missing values in "BedroomAbvGr"
+
+```{r}
+summary(dataset$BedroomAbvGr)
+```
+
+We plot "BedroomAbvGr" against "SalePrice" and notice that While a larger number of bedrooms probably denotes larger and therefore more expensive houses, the absolute number of bedrooms is not necessarily the strongest predictor of "SalePrice".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Scatterplot of BedroomAbvGr vs. SalePrice.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = BedroomAbvGr, y = SalePrice, color = BedroomAbvGr)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(0, 8, 1)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("BedroomAbvGr vs. SalePrice") +
+  geom_smooth(method = "lm")
+```
+
+\pagebreak
+
+### Kitchen: Kitchens above grade
+
+There are no missing values in "KitchenAbvGr".
+
+```{r}
+summary(dataset$KitchenAbvGr)
+```
+
+From the plot it becomes apparent that the number of kitchens above ground are not a good predictor of "SalePrice". Most houses actually only have one kitchen above ground, while having two or more does not indicate increased value.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Scatterplot of BedroomAbvGr vs. SalePrice.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = KitchenAbvGr, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(0, 3, 1)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("KitchenAbvGr vs. SalePrice") +
+  geom_smooth(method = "lm")
+```
+
+
+A few houses actually have no kitchen above ground.
+
+```{r}
+# Some houses don't have a kitchen above ground.
+which(dataset$KitchenAbvGr == 0)
+```
+
+\pagebreak
+
+### KitchenQual: Kitchen quality
+
+There is one missing value in "KitchenQual".
+
+```{r}
+summary(dataset$KitchenQual)
+```
+
+We will use kNN-based predictions to impute the missing value.
+
+```{r}
+# kNN-model.
+knn_model <- kNN(dataset, variable = "KitchenQual", k = 9)
+
+# The kNN-model predicts TA, the most common type of "KitchenQual".
+knn_model[knn_model$KitchenQual_imp == TRUE, ]$KitchenQual
+
+# Missing value imputation of "KitchenQual".
+dataset[which(is.na(dataset$KitchenQual)), ]$KitchenQual <-
+  knn_model[knn_model$KitchenQual_imp == TRUE, ]$KitchenQual
+```
+
+From the plots we can see that "KitchenQual" strongly correlates with "SalePrice". The quality of a kitchen is much more important than the total number.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of KitchenQual vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = KitchenQual, y = SalePrice, color = KitchenQual)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("KitchenQual vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = KitchenQual, y = SalePrice, color = KitchenQual)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("KitchenQual vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+We transform this qualitative ordinal factor into a numeric containing the present levels and plot it again.
+
+```{r, fig.height = 3, fig.width = 5}
+dataset$KitchenQual <- as.numeric(factor(dataset$KitchenQual, levels = c("Fa",
+                                                    "TA", "Gd", "Ex")))
+# Plotting changed KitchenQual.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = KitchenQual, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("KitchenQual vs. SalePrice") +
+  geom_smooth(method = "lm")
+```
+
+\pagebreak
+
+### TotRmsAbvGrd: Total rooms above grade (does not include bathrooms)
+
+There are no missing values in "TotRmsAbvGrd".
+
+```{r}
+summary(dataset$TotRmsAbvGrd)
+```
+
+From the plot it becomes clear that "TotRmsAbvGrd: Total rooms above grade (does not include bathrooms)" is clearly an indicator of a houses size. The more rooms the higher the "SalePrice" in most cases.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Scatterplot of TotRmsAbvGrd vs. SalePrice.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = TotRmsAbvGrd, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(0, 14, 1)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("TotRmsAbvGrd vs. SalePrice") +
+  geom_smooth(method = "lm")
+```
+
+\pagebreak
+
+### Functional: Home functionality (Assume typical unless deductions are warranted)
+
+
+There are a few missing values in "Functional". There is no house with a "Sal" (Salvage only) entry.
+
+```{r}
+summary(dataset$Functional)
+```
+
+We will use kNN-based missing value imputation for the missing values in "Functional".
+
+```{r}
+# We will use kNN-based predictions to impute the missing values.
+knn_model <- kNN(dataset, variable = "Functional", k = 9)
+
+# The kNN-model predicts "Typ", the most common type of "Functional".
+knn_model[knn_model$Functional_imp == TRUE, ]$Functional
+
+# Missing value imputation of "Functional".
+dataset[which(is.na(dataset$Functional)), ]$Functional <-
+  knn_model[knn_model$Functional_imp == TRUE, ]$Functional
+```
+
+We plot "Functional" against "SalePrice" and observe that "Maj2" (major deductions 2) seems to influence "SalePrice" negatively. A few houses are "Sev" (severly damaged), but median "SalePrice" remains comparable in these cases. Most houses, also most expensive houses,have "Typ" (typical functionality) values.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of Functional vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Functional, y = SalePrice, color = Functional)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Functional vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Functional, y = SalePrice, color = Functional)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Functional vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+
+### Fireplaces: Number of fireplaces
+
+There are no missing values in "Fireplaces". We change variable encoding to numeric.
+
+```{r}
+summary(dataset$Fireplaces)
+
+# Change variable encoding to numeric.
+dataset$Fireplaces <- as.numeric(dataset$Fireplaces)
+```
+
+"Fireplaces" can be considered another measurement of house size. Having more "Fireplaces" is possitively correlated with "SalePrice". It seems likely that having 1 or more "Fireplaces" of high quality would be strong predictors of "SalePrce. To confirm this, we have to inspect "FireplacesQu" as well.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Scatterplot of Fireplaces vs. SalePrice.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = Fireplaces, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  scale_x_continuous(breaks = seq(0, 3, 1)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Fireplaces vs. SalePrice") +
+  geom_smooth(method = "lm")
+```
+
+\pagebreak
+
+### FireplaceQu: Fireplace quality
+
+
+A large amount of values are missing in "FireplaceQu". From the data description we know that "no fireplace" was originally encoded as "NA" in the data. We can therefore replace all "NAs" with "None" and fix factor levels.
+
+```{r}
+summary(dataset$FireplaceQu)
+
+# Fixing missing values and factor levels.
+dataset$FireplaceQu <- as.character(dataset$FireplaceQu)
+dataset$FireplaceQu[which(is.na(dataset$FireplaceQu))] <- "None"
+dataset$FireplaceQu <- factor(dataset$FireplaceQu, levels = c("None",
+                                        "Po", "Fa", "TA", "Gd", "Ex"))
+```
+
+From the plots we can see that higher quality "Fireplaces" are well correlated with higher "SalePrice. However, there are also many houses without any "Fireplaces" that have larger "SalePrice" than some of the houses with "poor", "fair", or "typical" quality "Fireplaces".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of FireplaceQu vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = FireplaceQu, y = SalePrice, color = FireplaceQu)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("FireplaceQu vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = FireplaceQu, y = SalePrice, color = FireplaceQu)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("FireplaceQu vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### GarageType: Garage location
+
+There are a lot of missing values in "GarageType". # From the data description we know that "No Garage" was originally encoded as "NA". We will replace those with "None" and fix factor levels.
+
+```{r}
+summary(dataset$GarageType)
+
+# Fixing missing values and factor levels.
+dataset$GarageType <- as.character(dataset$GarageType)
+dataset$GarageType[which(is.na(dataset$GarageType))] <- "None"
+dataset$GarageType <- factor(dataset$GarageType, levels = c("None",
+        "Detchd", "CarPort", "BuiltIn", "Basment", "Attchd", "2Types"))
+```
+
+From the plots we can see that having no garage or just a carport can be predictive of a lower "SalePrice". There is a certain difference between detached and attached garages, too.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of GarageType vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = GarageType, y = SalePrice, color = GarageType)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("GarageType vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = GarageType, y = SalePrice, color = GarageType)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("GarageType vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### GarageYrBlt: Year garage was built
+
+
+There are a lot of missing values in "GarageYrBlt", presumably from houses with no garages.
+
+```{r}
+summary(dataset$GarageYrBlt)
+```  
+
+We plot "GarageYrBlt" vs. "YearBuilt" and color by "GarageType".
+
+```{r, fig.height = 3, fig.width = 6, warning = FALSE, message = FALSE}
+dataset %>%
+  ggplot(aes(x = GarageYrBlt, y = YearBuilt, color = GarageType)) +
+  geom_point(alpha = 0.3) +
+  theme_bw() +
+  ggtitle("GarageYrBlt vs. YearBuilt")
+```
+
+From the plot we can see that it is mostly detached garages being built after the house itself, otherwise "YearBuilt" and "GarageYrBlt" are mostly identical. Also, there seems to be an outlier, with a garage built sometime in the far future (in 2207 to be exact).
+
+```{r}
+# A garage built in the future?
+# dataset[which(dataset$GarageYrBlt > 2010), ]
+dataset$GarageYrBlt[which(dataset$GarageYrBlt > 2010)]
+```
+
+From this it seems most likely that the garage was built at the same time as the house and the outlier is based on a typo. We will fix this by changing the year 2207 to 2007 (based on the houses' "YearBuilt").
+
+```{r}
+dataset$GarageYrBlt[which(dataset$GarageYrBlt > 2010)] <- 2007
+```
+
+We plot "GarageYrBlt" against "YearBuilt" without the outlier.
+
+```{r, fig.height = 4, fig.width = 7, warning = FALSE, message = FALSE}
+# We plot GarageYrBlt vs. YearBuilt and color by GarageType without the outlier.
+dataset %>%
+  ggplot(aes(x = GarageYrBlt, y = YearBuilt, color = GarageType)) +
+  geom_point(alpha = 0.6) +
+  theme_bw() +
+  ggtitle("GarageYrBlt vs. YearBlt")
+```
+
+Interestingly, there are some houses with garage building years prior to the house itself. Perhaps building the house took much longer than the garage. Overall, "GarageYrBlt" does not add much in terms of "SalePrice" predictive power. As we can't turn this variable into a factor with a level "None" for not having a garage, we have to either impute the houses' "YearBuilt" or remove "GarageYrBlt" entirely. We will do the latter, as there are more than enough variables about Garages in the dataset and imputing "YearBuilt" might penalize houses that actually acquired their garage more recently.
+
+```{r}
+# Removal of "GarageYrBlt".
+dataset <- subset(dataset, select = - GarageYrBlt)
+```
+
+\pagebreak
+
+
+### GarageFinish: Interior finish of the garage
+
+There are many missing values in "GarageFinish", presumably from not having a garage in the first place, as seen before. From the data description we know that "No Garage" was originally encoded as "NA". We will replace those with "None" and fix factor levels.
+
+```{r}
+summary(dataset$GarageFinish)
+
+# Fixing missing values and factor levels.
+dataset$GarageFinish <- as.character(dataset$GarageFinish)
+dataset$GarageFinish[which(is.na(dataset$GarageFinish))] <- "None"
+dataset$GarageFinish <- factor(dataset$GarageFinish, levels = c("None",
+                                                  "Unf", "RFn", "Fin"))
+
+```
+
+We plot "GarageFinish" against "SalePrice" and observe that no or unfinished garages are predictive of lower "SalePrice".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of GarageFinish vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = GarageFinish, y = SalePrice, color = GarageFinish)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("GarageFinish vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = GarageFinish, y = SalePrice, color = GarageFinish)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("GarageFinish vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### GarageCars: Size of garage in car capacity, GarageArea: Size of garage in square feet
+
+
+"GarageCars" and "GarageArea" are two variables dealing with garage size. Both contain a missing value.
+
+```{r}
+# GarageArea.
+summary(dataset$GarageArea)
+
+#GarageCars.
+summary(dataset$GarageCars)
+```
+
+One house is missing a value in both variables. While the house has a "GarageType" of "Detchd", the "NAs" in "GarageQual" and "GarageCond" hint at the house actually not having any garage.
+
+```{r}
+# The house with missing values in these variables actually has no garage.
+# dataset[which(is.na(dataset$GarageArea)), ]
+# dataset[which(is.na(dataset$GarageCars)), ]
+```
+
+It seems that this house wrongly has an entry in "GarageType". We will change this to "None" and change the size variables zo zeroes as well.
+
+```{r}
+# Chaning GarageType to "None" as this house has no garage.
+dataset$GarageType[which(is.na(dataset$GarageArea))] <- "None"
+
+# This house has no garage and therefore no size values.
+dataset$GarageArea[which(is.na(dataset$GarageArea))] <- 0
+dataset$GarageCars[which(is.na(dataset$GarageCars))] <- 0
+```
+
+We plot "GarageArea" vs. "SalePrice" and color by factorized "GarageCars". From the plot we can clearly see that garage size in terms of area strongly correlates with the number of cars that it is designed to fit.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# We plot GarageArea vs. SalePrice and color by factorized GarageCars.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = GarageArea, y = SalePrice, color = factor(GarageCars))) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  ggtitle("GarageArea vs. SalePrice")
+```
+
+
+"GarageArea" and "GarageCars" are highly correlated.
+
+```{r}
+# Correlation between "GarageArea" and "GarageCars"."
+cor(dataset$GarageArea, dataset$GarageCars)
+```
+
+GarageCars is slightly stronger correlated with "SalePrice".
+
+```{r}
+# Correlation between "GarageArea" and "SalePrice".
+cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$GarageArea)
+
+# Correlation between "GarageCars" and "SalePrice".
+cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$GarageCars)
+```
+
+In order to avoid having two extremely colinear variables we will drop "GarageArea", the one with slightly lower correlation with "SalePrice".
+
+```{r}
+dataset <- subset(dataset, select = -GarageArea)
+```
+
+\pagebreak
+
+### GarageQual: Garage quality
+
+
+There are many missing values in "GarageQual", presumably from these houses having no garage. From the data description we know that "No Garage" was originally encoded as "NA". We will replace those with "None" and fix factor levels.
+
+```{r}
+summary(dataset$GarageQual)
+
+# Fixing missing values and factor levels.
+dataset$GarageQual <- as.character(dataset$GarageQual)
+dataset$GarageQual[which(is.na(dataset$GarageQual))] <- "None"
+dataset$GarageQual <- factor(dataset$GarageQual, levels = c("None",
+                                    "Po", "Fa", "TA", "Gd", "Ex"))
+```
+
+We plot "GarageQual" against "SalePrice" and observe that higher "GarageQual" is associated with higher "SalePrice". However, only few houses are in the "Excellent" category, causing a very large range.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Boxplot of GarageQual vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = GarageQual, y = SalePrice, color = GarageQual)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("GarageQual vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = GarageQual, y = SalePrice, color = GarageQual)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("GarageQual vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### GarageCond: Garage Condition
+
+There are many missing values in "GarageCond", presumably from these houses having no garage. From the data description we know that "No Garage" was originally encoded as "NA". We will replace those with "None" and fix factor levels.
+
+```{r}
+summary(dataset$GarageCond)
+
+# Fixing missing values and factor levels.
+dataset$GarageCond <- as.character(dataset$GarageCond)
+dataset$GarageCond[which(is.na(dataset$GarageCond))] <- "None"
+dataset$GarageCond <- factor(dataset$GarageCond, levels = c("None",
+                                    "Po", "Fa", "TA", "Gd", "Ex"))
+```
+
+From the plots we can see that "GarageCond" is very similar to "GarageQual. In both cases, a "typical" value "TA" seems to be the mode and actually associated with highest "SalePrice".
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of GarageCond vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = GarageCond, y = SalePrice, color = GarageCond)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("GarageCond vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = GarageCond, y = SalePrice, color = GarageCond)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("GarageCond vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### PavedDrive: Paved driveway
+
+
+There are no missing values in "PavedDrive".
+
+```{r}
+summary(dataset$PavedDrive)
+```
+
+From the plots we can see that a paved driveway is predictive of a higher "SalePrice".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of PavedDrive vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = PavedDrive, y = SalePrice, color = PavedDrive)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("PavedDrive vs. SalePrice")
+
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = PavedDrive, y = SalePrice, color = PavedDrive)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("PavedDrive vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### Variables related to porches
+
+
+We will first look at all the porch-related variables in isolation.
+
+**WoodDeckSF: Wood deck area in square feet**
+
+There are no missing values in "WoodDeckSF". We change variable encoding to numerical.
+
+```{r}
+summary(dataset$WoodDeckSF)
+
+# We change encoding to numerical.
+dataset$WoodDeckSF <- as.numeric(dataset$WoodDeckSF)
+```
+
+From the plot we an see that "WoodDeckSF" positively correelates with "SalePrice".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Scatterplot of WoodDeckSF vs. SalePrice
+dataset[train$Id, ] %>%
+  ggplot(aes(x = WoodDeckSF, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm") +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("WoodDeckSF vs. SalePrice")
+```
+
+
+
+**OpenPorchSF: Open porch area in square feet**
+
+There are no missing values in "OpenPorchSF". We change encoding to numerical
+
+```{r}
+summary(dataset$OpenPorchSF)
+
+# We change encoding to numerical.
+dataset$OpenPorchSF <- as.numeric(dataset$OpenPorchSF)
+```
+
+From the plot we can see that "OpenPorchSF" weakly positively correlates with "SalePrice".
+
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Scatterplot of OpenPorchSF vs. SalePrice
+dataset[train$Id, ] %>%
+  filter(OpenPorchSF > 0) %>%
+  ggplot(aes(x = OpenPorchSF, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm") +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("OpenPorchSF vs. SalePrice")
+```
+
+
+**EnclosedPorch: Enclosed porch area in square feet**
+
+
+There are no missing values in EnclosedPorch. We change encoding to numerical.
+
+```{r}
+summary(dataset$EnclosedPorch)
+
+# We change encoding to numerical.
+dataset$EnclosedPorch <- as.numeric(dataset$EnclosedPorch)
+```
+
+From the plot we can see that "EnclosedPorchSF" weakly positively correlates with "SalePrice".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Scatterplot of EnclosedPorch vs. SalePrice where EnclosedPorch > 0.
+dataset[train$Id, ] %>%
+  filter(EnclosedPorch > 0) %>%
+  ggplot(aes(x = EnclosedPorch, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm") +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("EnclosedPorch vs. SalePrice")
+```
+
+
+
+**X3SsnPorch: Enclosed porch area in square feet**
+
+There are no missing values in "X3SsnPorch". We change encoding to numerical.
+
+```{r}
+summary(dataset$X3SsnPorch)
+
+# We change encoding to numerical.
+dataset$X3SsnPorch <- as.numeric(dataset$X3SsnPorch)
+```
+
+
+From the plot we can see that "X3SsnPorch" does not seem to correlate much with "SalePrice".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Scatterplot of X3SsnPorch vs. SalePrice where X3SsnPorch > 0.
+dataset[train$Id, ] %>%
+  filter(X3SsnPorch > 0) %>%
+  ggplot(aes(x = X3SsnPorch, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm") +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("X3SsnPorch vs. SalePrice")
+```
+
+
+**ScreenPorch: Enclosed porch area in square feet**
+
+There are no missing values in "ScreenPorch". We change encoding to numerical.
+
+```{r}
+summary(dataset$ScreenPorch)
+
+# We change encoding to numerical.
+dataset$ScreenPorch <- as.numeric(dataset$ScreenPorch)
+```
+
+From the plot we can see that "ScreenPorch" weakly positively correlates with "SalePrice".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Scatterplot of ScreenPorch vs. SalePrice where ScreenPorch > 0.
+dataset[train$Id, ] %>%
+  filter(ScreenPorch > 0) %>%
+  ggplot(aes(x = ScreenPorch, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm") +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("ScreenPorch vs. SalePrice")
+```
+
+
+
+It seems that all the porch-related variables are individually not very predictive of "SalePrice".
+We will try and combine them into one new variable, "TotalPorch".
+
+```{r}
+# Combining the individual porch-related variables into one, "TotalPorch".
+dataset$TotalPorch <- dataset$WoodDeckSF + dataset$OpenPorchSF +
+  dataset$EnclosedPorch + dataset$X3SsnPorch + dataset$ScreenPorch
+```
+
+We then plot "TotalPorch" against "SalePrice" for all "TotalPorch" > 0. The combined variable seems to correlate rather well with "SalePrice".
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Scatterplot of TotalPorch vs. SalePrice where TotalPorch > 0.
+dataset[train$Id, ] %>%
+  filter(TotalPorch > 0) %>%
+  ggplot(aes(x = TotalPorch, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm") +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("TotalPorch vs. SalePrice")
+```
+
+
+"TotalPorch" as a decent correlation with "SalePrice".
+
+```{r}
+# Correlation between "TotalPorch" and "SalePrice".
+cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$TotalPorch)
+```
+
+We will remove the individual porch-related variables from the dataset. The combined variable "TotalPorch" disregards any differenes in value between the individual variables, however.
+
+```{r}
+dataset <- subset(dataset, select = -c(OpenPorchSF,
+      EnclosedPorch, X3SsnPorch, ScreenPorch, WoodDeckSF))
+```
+
+\pagebreak
+
+### PoolArea: Pool area in square feet
+
+There are no missing values in "PoolArea".
+
+```{r}
+summary(dataset$PoolArea)
+```
+
+We plot "PoolArea" against "SalePrice" for all "PoolArea" > 0. "PoolArea" seems to have little predictive power in terms of "SalePrice". Also, only a few houses actually have a pool. Is having a pool regardless of size in general more important? We will explore "PoolQC".
+
+```{r, echo = FALSE, fig.height = 3, fig.wdth = 6}
+# Scatterplot of PoolArea vs. SalePrice where PoolArea > 0.
+dataset[train$Id, ] %>%
+  filter(PoolArea > 0) %>%
+  ggplot(aes(x = PoolArea, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm") +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("PoolArea vs. SalePrice")
+```
+
+\pagebreak
+
+
+### PoolQC: Pool quality
+
+Almost all values are missing in "PoolQC". We know from the data description that not having a pool is wrongly encoded as "NA". We fill fix this problem and correct factor levels.
+
+```{r}
+summary(dataset$PoolQC)
+
+# Fixing missing values and factor levels.
+dataset$PoolQC <- as.character(dataset$PoolQC)
+dataset$PoolQC[which(is.na(dataset$PoolQC))] <- "None"
+dataset$PoolQC <- factor(dataset$PoolQC, levels = c("None",
+                                          "Fa", "Gd", "Ex"))
+```
+
+As described above, few houses actually have a pool. Both pool-related variables seem to encode very little information.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+# Scatterplot of PoolQC vs. SalePrice.
+dataset[train$Id, ] %>%
+  ggplot(aes(x = PoolQC, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("PoolQC vs. SalePrice")
+```
+
+\pagebreak
+
+### Fence: Fence quality
+
+
+Most values are missing from "Fence". We know from the data description that not having a fence is wrongly encoded as "NA". We fill fix this problem and correct factor levels.
+
+```{r}
+summary(dataset$Fence)
+
+# Fixing missing values nad factor levels.
+dataset$Fence <- as.character(dataset$Fence)
+dataset$Fence[which(is.na(dataset$Fence))] <- "None"
+dataset$Fence <- factor(dataset$Fence, levels = c("None",
+                      "MnWw", "GdWo", "MnPrv", "GdPrv"))
+```
+
+From the plots we can see that "Fence" is not giving much information at all. "Fence" seems to have little importance in terms of "SalePrice".
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of Fence vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Fence, y = SalePrice, color = Fence)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Fence vs. SalePrice")
+
+# Scatterplot of Fence vs. SalePrice.
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = Fence, y = SalePrice, color = Fence)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("Fence vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+
+### MiscFeature: Miscellaneous feature not covered in other categories
+
+
+Most values are missing from "MiscFeature". We know from the data description that not having a "MiscFeature" is wrongly encoded as "NA".
+
+```{r}
+# We fill fix this problem and correct factor levels.
+summary(dataset$MiscFeature)
+
+# Fixing missing values and factor levels.
+dataset$MiscFeature <- as.character(dataset$MiscFeature)
+dataset$MiscFeature[which(is.na(dataset$MiscFeature))] <- "None"
+dataset$MiscFeature <- factor(dataset$MiscFeature, levels = c("None",
+                              "TenC", "Shed", "Othr", "Gar2", "Elev"))
+```
+
+From the plots we can see that While having a tennis court might increase "SalePrice", there are simply not enough data points for the "MiscFeature" variable to be very useful.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of MiscFeature vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MiscFeature, y = SalePrice, color = MiscFeature)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("MiscFeature vs. SalePrice")
+
+# Scatterplot of MiscFeature vs. SalePrice.
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = MiscFeature, y = SalePrice, color = MiscFeature)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("MiscFeature vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### MiscVal: $Value of miscellaneous feature
+
+There are no missing values in "MiscVal".
+
+```{r}
+summary(dataset$MiscVal)
+```
+
+From the plots we can see that the Dollar-value of "MiscFeatures" is not necessarily the best indicator for "SalePrice" increases.
+
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Scatterplot of MiscVal vs. SalePrice
+dataset[train$Id, ] %>%
+  filter(MiscVal > 0) %>%
+  ggplot(aes(x = MiscVal, y = SalePrice)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm") +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  ggtitle("MiscVal vs. SalePrice")
+```
+
+\pagebreak
+
+### MoSold: Month Sold (MM), YrSold: Year Sold (YYYY)
+
+
+We plot "MonthSold" and "YearSold" - do these features influence "SalePrice"? We plot the amount of sold houses per month. Most houses are sold during the Spring/Summer months of the year, as indicated by the red dashed lines.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# We plot the amount of sold houses per month. Most houses are sold during the Spring/Summer months of the year.
+dataset %>%
+  group_by(MoSold) %>%
+  count() %>%
+  ggplot(aes(x = MoSold, y = n)) +
+  geom_line(col = "blue") +
+  ylab("Number of houses sold") +
+  xlab("Month") +
+  scale_x_continuous(breaks = seq(1, 12, 1)) +
+  geom_vline(xintercept = 3, col = "red", linetype = "dashed") +
+  geom_vline(xintercept = 9, col = "red", linetype = "dashed")
+```
+
+Does this influence "SalePrice"? "MoSold" doesn't seem to influence "SalePrice" at all. There are simply more houses being sold in the summer months.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+dataset[train$Id, ] %>%
+  group_by(MoSold) %>%
+  ggplot(aes(x = MoSold, y = SalePrice, group = MoSold)) +
+  geom_boxplot() +
+  ylab("Sale price") +
+  xlab("Month") +
+  scale_x_continuous(breaks = seq(1,12,1)) +
+  ggtitle("Distribution of SalePrice over MoSold")
+```
+  
+We plot the amount of sold houses per year. The amount is relatively similar, but much less entries are in 2010, the most recent year in the dataset.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+dataset %>%
+  group_by(YrSold) %>%
+  count() %>%
+  ggplot(aes(x = YrSold, y = n)) +
+  geom_line(col = "blue") +
+  ylab("Number of houses sold") +
+  xlab("Year")
+```
+  
+"YrSold" doesn't seem to influence "SalePrice" at all, even though we know that the financial crisis of 2008 might have impacted prices.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+dataset[train$Id, ] %>%
+  group_by(YrSold) %>%
+  ggplot(aes(x = YrSold, y = SalePrice, group = YrSold)) +
+  geom_boxplot() +
+  ylab("Sale price") +
+  xlab("Year") +
+  ggtitle("Distribution of SalePrice over YrSold")
+```
+
+\pagebreak
+
+### SaleType: Type of sale
+
+
+There is a missing value in "SaleType".
+
+```{r}
+summary(dataset$SaleType)
+```
+
+We use kNN-based missing value imputation. The model predicts "WD", the mode, as the value to impute for the missing "SaleType" entry.
+
+```{r}
+#kNN-model.
+knn_model <- kNN(dataset, variable = "SaleType", k = 9)
+
+# Predicted "SaleType" value. "WD" is the most common value for "SaleType".
+knn_model[knn_model$SaleType_imp == TRUE, ]$SaleType
+
+# We impute the value.
+dataset$SaleType[which(is.na(dataset$SaleType))] <-
+  knn_model[knn_model$SaleType_imp == TRUE, ]$SaleType
+```
+
+From the plots we can see that some "SaleTypes" occur more seldom than others and that sales of new houses and warranty deed conventional ("WD") are indicative of higher "SalePrice". Some categories have simply too few entries.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of SaleType vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = SaleType, y = SalePrice, color = SaleType)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("SaleType vs. SalePrice")
+
+# Scatterplot of SaleType vs. SalePrice.
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = SaleType, y = SalePrice, color = SaleType)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("SaleType vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### SaleCondition: Condition of sale
+
+
+There are no missing values in "SaleCondition".
+
+```{r}
+summary(dataset$SaleCondition)
+```
+
+From the plots we can see that "partial", as a measure of "newness" seems to indicate higher "SalePrice".
+Most houses are sold under normal conditions.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# Boxplot of SaleCondition vs. SalePrice.
+p1 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = SaleCondition, y = SalePrice, color = SaleCondition)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("SaleCondition vs. SalePrice")
+
+# Scatterplot of SaleCondition vs. SalePrice.
+p2 <- dataset[train$Id, ] %>%
+  ggplot(aes(x = SaleCondition, y = SalePrice, color = SaleCondition)) +
+  geom_point(alpha = 0.3) +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("SaleCondition vs. SalePrice")
+
+grid.arrange(p1, p2, nrow = 1)
+
+rm(p1, p2)
+```
+
+\pagebreak
+
+### Skewedness of the outcome variable SalePrice
+
+Monetary values are often log-normally distributed. How does "SalePrice" look like? The histogram below indicates a certain skewedness.
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
+dataset[train$Id, ] %>%
+  ggplot(aes(SalePrice)) +
+  geom_histogram(bins = 30, color = "black", fill = "orange") +
+  ggtitle("Histogram of SalePrice distribution")
+```
+
+We can check for skewedness with a function. The skew is considerably higher than 0.8. A log-transformation could potentially lead to "SalePrice" being more normal. It is plotted below.
+
+```{r, fig.height = 3, fig.width = 6}
+# Determine skew of "SalePrice".
+e1071::skewness(dataset[train$Id, ]$SalePrice) 
+
+# Plotting the log-transformation.
+dataset[train$Id, ] %>%
+  ggplot(aes(log1p(SalePrice))) +
+  geom_histogram(bins = 30, color = "black", fill = "orange") +
+  xlab("Log-transformed SalePrice") +
+  ggtitle("Histogram of log-transformed SalePrice distribution")
+```
+
+We log-transform "SalePrice".
+
+```{r}
+dataset$SalePrice <- log1p(dataset$SalePrice)
+```
+
+\pagebreak
+
+## Summary of Data Analysis and Manipulations
+
+The purpose of the somewhat exhaustive exploratory data analysis was to develop a certain intuition about all the different features and their level of potential influence over the outcome variable "SalePrice". While box- and scatter-plots certainly don't reveal more intricate relationships between certain variables, they do however help to get a good idea about the general direction and distribution of categories within a feature.
+
+Some light feature engineering was conducted in an attempt to improve the value of some of the features. It would also have been possible to exclude some more of the variables with little influence on "SalePrice" or those which might do more harm than good (e.g. due to having underreprsented catagories).
+
+All missing values have been dealt with and we can once again separate `dataset` into `train` and `test`. The temporary "SalePrice" column in `test` is removed.  
+
+```{r}
+train <- dataset[train$Id, ]
+test <- subset(dataset[test$Id, ], select = -SalePrice)   
+```
+
+Missing values were mostly produced by erroneous encoding in the dataset, where the absence of a garage for example was entered as "NA". Actual missing values were mostly dealt with via kNN-based imputation. The kNN algorithm mostly predicted the most common value for a given feature/category. The value for the k-nearest neighbours was set to k = 9 arbitrarily and could have been optimized for each individual case. The kNN algorithm assumes that a value can be estimated/approximated by the values that are closest to it, based on other variables (i.e. houses with very similar other characteristics).
+
+
+
+
+
+\pagebreak
+
+# Modelling Approaches
+
+First we write a loss-function to determine the residual mean squared error, or RMSE of the model. The function calculates the residuals/error and then takes the root mean square of them.
+
+```{r}
+# Defining the loss-function which calculates the RMSE.
+RMSE <- function(predicted_prices, true_prices) {
+  error <- predicted_prices - true_prices
+  sqrt(mean(error^2))
+}
+```
+
+Next, we split `train` into a separate `train_set` and `test_set` for algorithm evaluation purposes (we won't use the real `test` subset for this and treat it as completely new data (the "hold-out" set) for final evaluations only).
+
+```{r, message = FALSE}
+# test_set will receive 20% of the data, train_set will receive 80%.
+# The test_set will serve as a "hold-out" set to check algorithm performance.
+set.seed(1442)
+test_index <- createDataPartition(train$SalePrice, p = 0.2, list = FALSE)
+
+train_set <- train[-test_index, ]
+temp <- train[test_index, ] # Temporary test_set.
+
+# We make sure there are no entries in test_set that aren't in train_set.
+test_set <- temp %>%
+  semi_join(train_set, by = c("Electrical", "MiscFeature")) 
+
+# We return the removed entries from test_set to train_set.
+removed <- anti_join(temp, test_set)
+train_set <- rbind(train_set, removed)
+```
+
+## Simple linear regression as a baseline model
+
+As our first, very simple model we predict house "SalePrice" via simple linear regression with just "GrLivArea". We also generate a table to keep track of the RMSEs our various models generate. Simple linear regression with a single predictor, "GrLivArea", achieved the RMSE printed below.
+
+```{r}
+# Linear regression with a single predictor, "GrLivArea".
+model_1_lm <- lm(SalePrice ~ GrLivArea, data = train_set) 
+
+# Predict on test_set.
+model_1_pred <- predict(model_1_lm, newdata = test_set) 
+
+# Calculate RMSE with our defined function.
+model_1_lm_RMSE <- RMSE(model_1_pred, test_set$SalePrice) 
+
+# Record RMSE of the model.
+model_rmses <- data_frame(Model = "Simple_lm", RMSE = model_1_lm_RMSE)
+
+# Print RMSEs.
+model_rmses %>% knitr::kable()
+```
+
+
+## Multivariate linear regression utilizing several predictors
+
+Multivariate linear regression utilizing several predictors achieved a much lower RMSE, which is printed below.
+
+```{r, warning = FALSE, message = FALSE}
+# Multivariate linear regression with several predictors.
+model_2_multi_lm <- lm(SalePrice ~ GrLivArea + OverallQual + YearBuilt, data = train_set) 
+
+# Predict on test_set.
+model_2_multi_lm_pred <- predict(model_2_multi_lm, newdata = test_set) 
+
+# Calculate RMSE with our defined function.
+model_2_multi_lm_RMSE <- RMSE(model_2_multi_lm_pred, test_set$SalePrice) 
+
+# Record RMSE of the model.
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Multi_lm_several", RMSE = model_2_multi_lm_RMSE))
+
+# Print RMSEs.
+model_rmses %>% knitr::kable()
+```
+
+## Multivariate linear regression utilizing all available predictors
+
+Multivariate linear regression utilizing all available predictors achieves an even lower RMSE, which is printed below.
+
+```{r, warning = FALSE, message = FALSE}
+# Multivariate linear regression with all predictors.
+model_3_multi_lm <- lm(SalePrice ~ ., data = train_set) 
+
+# Predict on test_set.
+model_3_multi_lm_pred <- predict(model_3_multi_lm, newdata = test_set) 
+
+# Calculate RMSE with our defined function.
+model_3_multi_lm_RMSE <- RMSE(model_3_multi_lm_pred, test_set$SalePrice) 
+
+# Record RMSE of the model.
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Multi_lm_all", RMSE = model_3_multi_lm_RMSE))
+
+# Print RMSEs.
+model_rmses %>% knitr::kable()
+```
+
+## Gradient boosting machine model: XGBoost
+
+We will utilize the XGBoost algorithm to build models to predict "SalePrice". XGBoost requires the dataset to be entirely in numerical format, which can be achieved via so-called "one-hot-encoding" of the variables. One way to do this is to use the "vtreat" package and its function "designTreatmentsZ", which devises a "treatment plan" to "one-hot-encode" all relevant variables at once. This "treatment plan" is then used via the "prepare" function to do the "one-hot-encoding" on the `train_set` and on the `test_set`. We thus generate `train_set_treated` and `test_set_treated` for use with XGBoost.
+
+```{r, message = FALSE}
+# We select all relevant predictors.
+variables <- names(subset(train_set, select = -c(Id, SalePrice)))
+
+# The vtreat function "designTreatmentsZ" helps encode all variables numerically
+# via one-hot-encoding.
+
+# Devise a "treatment plan" for the variables selected above.
+# use_series() works like a $, but within pipes, so we can access scoreFrame.
+# We select only the rows we care about: catP is a "prevalence fact" and tells
+# whether the original level was rare or common and not really useful in the model.
+# We get the varName column.
+treatment_plan <- designTreatmentsZ(train_set, variables, verbose = FALSE) 
+
+newvars <- treatment_plan %>%
+    use_series(scoreFrame) %>%        
+    filter(code %in% c("clean", "lev")) %>%  
+    use_series(varName)         
+
+# The prepare() function prepares our data subsets according to the treatment plan
+# we devised above and encodes all relevant variables "newvars" numerically.
+
+# Treatment of train_set.
+train_set_treated <- vtreat::prepare(treatment_plan, train_set,  varRestriction = newvars)
+
+# Treaement of test_set.
+test_set_treated <- vtreat::prepare(treatment_plan, test_set,  varRestriction = newvars)
+```
+
+Next we will use the `xgb.cv()` function to determine the total number of rounds `nrounds` that improve RMSE until only the training RMSE reduces further, while the cross-validated RMSE already reached a minimum. While the training RMSE may continue to decrease on more and more rounds of boosting iterations ("overfitting"), the test RMSE usually does not after some point. After running `xgb.cv()` we can access its event log to find the optimal number of iterations. As the treated `train_set` no longer contains the outcome variable "SalePrice", we have to use the untreated `train_set` to provide it as a `label`. For our baseline XGBoost model, we will use mostly default parameters.
+
+```{r}
+# xgb.cv only takes a matrix of the treated, all-numerical input data.
+cv <- xgb.cv(data = as.matrix(train_set_treated),  
+             label = train_set$SalePrice, # Outcome from untreated data
+             nrounds = 500,
+             nfold = 5, # We use 5 folds for cross-validation
+             early_stopping_rounds = 10,
+             verbose = 0)    # silent
+
+# Get the evaluation log of the cross-validation and find the number
+# of iterations that minimize RMSE without overfitting the training data
+elog <- cv$evaluation_log 
+
+# Finding the indexes.
+elog %>% 
+  summarize(ntrees.train = which.min(train_rmse_mean), 
+            ntrees.test  = which.min(test_rmse_mean))
+
+# Save the number of iterations that minimize test-RMSE in `niter`.
+niter <- elog %>% 
+  summarize(niter.train = which.min(train_rmse_mean),
+            niter.test  = which.min(test_rmse_mean)) %>%
+  use_series(niter.test)
+
+# Next we run the actual modelling process with the information
+# gained by running xgboost cross-validation above.
+# The treated `train_set`has to be provided as a matrix.
+XGBoost_baseline <- xgboost(data = as.matrix(train_set_treated),
+                                 label = train_set$SalePrice,
+                                 nrounds = niter,
+                                 objective = "reg:linear",
+                                 verbose = 0)  
+
+# Now we can predict SalePrice in the test_set with the xgb-model
+XGBoost_baseline_pred <- predict(XGBoost_baseline,
+                      newdata = as.matrix(test_set_treated))
+
+# Calculate RMSE.
+XGBoost_baseline_RMSE <- RMSE(XGBoost_baseline_pred, test_set$SalePrice)
+
+# Record the RMSE.
+model_rmses <- bind_rows(model_rmses,
+    data_frame(Model = "XGBoost_baseline", RMSE = XGBoost_baseline_RMSE))
+
+# Print the RMSE table.
+model_rmses %>% knitr::kable()
+```
+
+The RMSE has worsened compared to the simple linear regression approach. But can we do better? We try and tune our XGBoost-model with the `caret` package.
+
+
+## Hyperparameter tuning of the XGBoost algorithm "xgbTree" with caret
+
+We will evaluate different values for the hyperparameters of the "xgbTree" algorithm in the `caret` package. As expansive grid searches become computationally very expensive the more parameters are evaluated at the same time (easily into the thousands of models), we will instead evaluate no more than 2 parameters per tuning round and try to visually inspect their influence on model performance. In the first round of tunings, we will determine `max_depth`, the maximal depth of trees to use. Larger trees allow faster learning, but make the model more and more complex and prone to overfitting. The increased model complexity means that the model learns variable relations that might be very specific to the training data and not generalize well to new data. In addition, we will examine different values of `min_child_weight`, which defines the minimum sum of weights of all observations required in a child. Higher values here will counteract overfitting by preventing the model from learning variable relations that might be very specific to the particular sample which was selected for a particular tree. Large values of `min_child_weight` might lead to underfitting the training data. We will select some fairly standard values for the other hyperparameters to avoid exploding the number of models we will train in this first tuning step. We will use 3-times repeated 3-fold cross-validation. In addition, we make use of the `caret` `preProcess` option to remove near-zero variance predictors and to center and scale our data prior to model fitting.
+
+After training and fitting the model, we will visually inspect which set of hyperparameters achieved the lowest RMSE value as determined by cross-validation. Afterwards we will predict against our `test_set` ("hold-out-set") and determine "out-of-bag" RMSE.
+
+**Please note that model fitting is utilizing parallelization, which might require more RAM and cause increased CPU heat production during modelling.**
+
+
+### First round of hyperparameter tuning: max_depth and min_child_weight
+
+```{r, warning = FALSE, message = FALSE}
+# We define a tune grid with selected ranges of hyperparameters to tune.
+tuneGrid <- expand.grid(
+  nrounds = seq(150, 1000, 50),
+  max_depth = c(2, 3, 4, 5, 6),
+  eta = 0.05,
+  gamma = 0,
+  colsample_bytree = 0.8,
+  min_child_weight = c(2, 4, 6),
+  subsample = 0.8
+)
+
+# We define a custom train control for the caret train() function.
+train_control <- trainControl(
+  method = "repeatedcv", 
+  number = 3,
+  repeats = 3,
+  verboseIter = FALSE,
+  allowParallel = TRUE
+)
+
+# We run the model with above parameters.
+# Additionally, we add pre-processing which removes near-zero variance estimators,
+# as well as centers and scales the data prior to training.
+xgb_1st_tuning <- caret::train(
+  x = train_set_treated,
+  y = train_set$SalePrice,
+  trControl = train_control,
+  tuneGrid = tuneGrid,
+  method = "xgbTree",
+  verbose = FALSE,
+  preProcess = c("nzv", "center", "scale")
+)
+
+# Print the best tuning parameters.
+xgb_1st_tuning$bestTune
+
+# Visualization of the 1st tuning round.
+ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
+```
+
+From the tuning plots and the selected best parameters we can see that relatively shallow trees of `max_depth` 3 were chosen, along with a moderate `min_child_weight` of 4. The number of boosting iterations to reach the lowest RMSE with these settings is also a moderate 550. After some further tuning of other hyperparameters, we will see whether a slower learning rate `eta` would improve things.
+
+We can also visualize which variables were most important in the modelling process. Unsurprisingly, "GrLivArea" and "TotalBsmtSF" as measures of living space are extremely important in determining "SalePrice". "OverallQual" is the most important variable. "GarageCars" and "TotalBaths" can also be viewed as measurements of house size and living space. The "YearBuilt" is also very important, as is the "KitchenQual" and "OverallCond". 
+
+```{r, fig.height = 3, fig.width = 6}
+# Visualization of the most important features.
+vip(xgb_1st_tuning, num_features = 10) + ggtitle("Variable importance")
+```
+
+We can now predict on `test_set` and record "out-of-bag" RMSE.
+
+```{r}
+# We predict on the test_set and record the "out-of-bag" RMSE.
+xgb_1st_tuning_pred <- predict(xgb_1st_tuning, test_set_treated)
+
+xgb_1st_tuning_rmse <- RMSE(xgb_1st_tuning_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses,
+    data_frame(Model = "caret_xgbTree_1st_tune", RMSE = xgb_1st_tuning_rmse))
+
+model_rmses %>% knitr::kable()
+```
+
+The RMSE has improved significantly with these modelling settings. Next, we will tune the remaining hyperparameters to see whether we can improve things even further.
+
+
+### Second round of hyperparameter tuning: colsample_bytree and subsample
+
+After we determined good values for `max_depth` and `min_child_weight` in the first tuning round, we will now test several different values for `colsample_bytree` and `subsample`. The latter denotes the fraction of observations to be randomly samples for each tree, thereby preventing overfitting if values are lower. For example, a setting of 0.7 would mean that "xgbTree" would randomly sample 70% of the training data prior to growing trees in each iteration. `colsample_bytree` acts in similar fashion and denotes the subsample ratio of columns when constructing each tree.
+
+```{r, warning = FALSE, message = FALSE}
+# We define a tune grid with selected ranges of hyperparameters to tune.
+tuneGrid <- expand.grid(
+  nrounds = seq(150, 1000, 50),
+  max_depth = xgb_1st_tuning$bestTune$max_depth,
+  eta = 0.05,
+  gamma = 0,
+  colsample_bytree = seq(0.4, 0.9, 0.1),
+  min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
+  subsample = seq(0.4, 0.9, 0.1)
+)
+
+# We define a custom train control for the caret train() function.
+train_control <- trainControl(
+  method = "repeatedcv", 
+  number = 3,
+  repeats = 3,
+  verboseIter = FALSE,
+  allowParallel = TRUE
+)
+
+# We run the model with above parameters.
+# Additionally, we add pre-processing which removes near-zero variance estimators,
+# as well as centers and scales the data prior to training.
+xgb_2nd_tuning <- caret::train(
+  x = train_set_treated,
+  y = train_set$SalePrice,
+  trControl = train_control,
+  tuneGrid = tuneGrid,
+  method = "xgbTree",
+  verbose = FALSE,
+  preProcess = c("nzv", "center", "scale")
+)
+
+# Print the best tuning parameters.
+xgb_2nd_tuning$bestTune
+
+# Visualization of the 2nd tuning round.
+ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
+```
+
+We can now predict on `test_set` and record "out-of-bag" RMSE. We note a small improvement over the first tuning round.
+
+```{r}
+# We predict on the test_set and record the "out-of-bag" RMSE.
+xgb_2nd_tuning_pred <- predict(xgb_2nd_tuning, test_set_treated)
+
+xgb_2nd_tuning_rmse <- RMSE(xgb_2nd_tuning_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses,
+    data_frame(Model = "caret_xgbTree_2nd_tune", RMSE = xgb_2nd_tuning_rmse))
+
+model_rmses %>% knitr::kable()
+```
+
+### Third round of hyperparameter tuning: eta and nrounds
+
+In the third and last round of hyperparameter tuning we will determine the optimal learning rate `eta` and the optimal number of boosting iterations `nrounds`. The slower the learning rate, the more "fine-grained" the fitting process will be. The algorithm learns in smaller steps, but can therefore find finer optima. `eta` achieves this by shrinking the determined variable weights afer each step. It is therefore also called "step size shrinkage". By shrinking feature weights each step, the algorithm becomes more conservative.
+
+```{r, warning = FALSE, message = FALSE}
+# We define a tune grid with selected ranges of hyperparameters to tune.
+tuneGrid <- expand.grid(
+  nrounds = seq(150, 2000, 50),
+  max_depth = xgb_1st_tuning$bestTune$max_depth,
+  eta = c(0.025, 0.05, 0.075, 0.1),
+  gamma = 0,
+  colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
+  min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
+  subsample = xgb_2nd_tuning$bestTune$subsample
+)
+
+# We define a custom train control for the caret train() function.
+train_control <- trainControl(
+  method = "repeatedcv", 
+  number = 3,
+  repeats = 3,
+  verboseIter = FALSE,
+  allowParallel = TRUE
+)
+
+# We run the model with above parameters.
+# Additionally, we add pre-processing which removes near-zero variance estimators,
+# as well as centers and scales the data prior to training.
+xgb_3rd_tuning <- caret::train(
+  x = train_set_treated,
+  y = train_set$SalePrice,
+  trControl = train_control,
+  tuneGrid = tuneGrid,
+  method = "xgbTree",
+  verbose = FALSE,
+  preProcess = c("nzv", "center", "scale")
+)
+
+# Print the best tuning parameters.
+xgb_3rd_tuning$bestTune
+
+# Visualization of the 3rd tuning round.
+ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
+
+```
+
+We can now predict on `test_set` and record "out-of-bag" RMSE. We note a small improvement over the second tuning round.
+
+```{r}
+# We predict on the test_set and record the "out-of-bag" RMSE.
+xgb_3rd_tuning_pred <- predict(xgb_3rd_tuning, test_set_treated)
+
+xgb_3rd_tuning_rmse <- RMSE(xgb_3rd_tuning_pred, test_set$SalePrice)
+
+model_rmses <- bind_rows(model_rmses,
+    data_frame(Model = "caret_xgbTree_3rd_tune", RMSE = xgb_3rd_tuning_rmse))
+
+model_rmses %>% knitr::kable()
+```
+
+### Fitting the model with optimized hyperparameters on the entire training subset
+
+As a final step we fit the model with the above determined parameters on the entire training subset `train`. Accordingly, `train` has to be prepared via "one-hot-encoding". We can then fit the final "xgbTree" model with the hyperparameters from the final tuning round. We are using 3-times repeated 5-fold cross-validation in this final step.
+
+```{r}
+# We select all relevant predictors
+variables <- names(subset(train, select = -c(Id, SalePrice)))
+
+# Devise a "treatment plan"" for the variables.
+treatment_plan <- designTreatmentsZ(train, variables, verbose = FALSE) 
+
+newvars <- treatment_plan %>%
+    use_series(scoreFrame) %>%      
+    filter(code %in% c("clean", "lev")) %>%  
+    use_series(varName)
+
+# The prepare() function prepares our data subsets according to the treatment plan
+# we devised above and encodes all relevant variables "newvars" numerically.
+train_treated <- vtreat::prepare(treatment_plan, train,  varRestriction = newvars)
+test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
+
+# We set the final tuning parameters.
+tuneGrid <- expand.grid(
+  nrounds = seq(150, 2000, 50),
+  max_depth = xgb_1st_tuning$bestTune$max_depth,
+  eta = xgb_3rd_tuning$bestTune$eta,
+  gamma = 0,
+  colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
+  min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
+  subsample = xgb_2nd_tuning$bestTune$subsample
+)
+
+# Train control for caret train() function. We use k-fold cross-validation.
+train_control <- caret::trainControl(
+  method = "repeatedcv", 
+  number = 5,
+  repeats = 3,
+  verboseIter = FALSE,
+  allowParallel = TRUE
+)
+
+# Run the model with above parameters.
+xgb_final_model <- caret::train(
+  x = train_treated,
+  y = train$SalePrice,
+  trControl = train_control,
+  tuneGrid = tuneGrid,
+  method = "xgbTree",
+  verbose = FALSE,
+  preProcess = c("nzv", "center", "scale")
+)
+```
+
+We can then visualize the final model and take a look at the lowest cross-validation RMSE value, prior to predicting against `test` (which doesn't contain a "SalePrice" column).
+
+```{r, error = FALSE, message = FALSE}
+# Visualization of the final fitted model.
+ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.125, 0.140))
+
+# Lowest RMSE obtained in cross-validation.
+min(xgb_final_model$results$RMSE)
+```
+
+Finally, we can predict on `test` and prepare the submission file for entry into the **Kaggle** competition, where the submission is evaluated and scored on a public leaderboard. At the time of this writing, the generated submission file scored an RMSE of 0.12588 and achieved a rank of 1475 on the public leaderboard of the respective competition. The public leaderboard is calculated with approximately 50% of the test data and the final results will be based on the other 50%, so final scores are subject to change. Curiously, the actual public score at **Kaggle** is very close to the RMSE determined by cross-validation during the final model fitting above (RMSE of ~0.1251).
+
+```{r}
+# Predicting on test. We take the exp() as we log-transformed "SalePrice".
+xgb_final_model_pred <- exp(predict(xgb_final_model, as.matrix(test_treated)))
+
+# We create the submission file.
+my_submission <- data.frame(Id = test$Id, SalePrice = xgb_final_model_pred)
+
+write.table(my_submission, file = "submission.csv", col.names = TRUE, row.names = FALSE, sep = ",")
+```

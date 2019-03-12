@@ -2974,9 +2974,9 @@ model_rmses %>% knitr::kable()
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 4000, 50),
+  nrounds = seq(150, 2000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = c(0.01, 0.025, 0.05, 0.1),
+  eta = c(0.025, 0.05, 0.075, 0.1),
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
@@ -3049,19 +3049,19 @@ test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
 
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(1000, 2000, 100),
-  max_depth = 4,
-  eta = 0.05,
+  nrounds = seq(150, 2000, 50),
+  max_depth = xgb_1st_tuning$bestTune$max_depth,
+  eta = xgb_3rd_tuning$bestTune$eta,
   gamma = 0,
-  colsample_bytree = 1,
-  min_child_weight = 3,
-  subsample = 0.6
+  colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
+  min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
+  subsample = xgb_2nd_tuning$bestTune$subsample
 )
 
 # Train control for caret train() function. We use k-fold cross-validation.
 train_control <- caret::trainControl(
   method = "repeatedcv", 
-  number = 3,
+  number = 5,
   repeats = 3,
   verboseIter = FALSE,
   allowParallel = TRUE
