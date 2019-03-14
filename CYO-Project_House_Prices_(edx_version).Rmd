@@ -10,7 +10,7 @@ output:
     toc_depth: 3
 ---
 
-# Overview
+# Introduction
 
 ## Dataset Preparation
 The house prices dataset can be found on [**Kaggle**](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data) or, alternatively, in my [**Github repository**](https://github.com/mpwweihrauc/ML_House_Prices.git). We will work with the `test.csv` and `train.csv` files. There is also a `data_description.txt` with descriptions about all the different parameters in the dataset. The desired outcome variable "SalePrice" is not present in `test`. 
@@ -25,7 +25,6 @@ The house prices dataset can be found on [**Kaggle**](https://www.kaggle.com/c/h
 if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
 if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org", dependencies = c("Depends", "Suggests"))
 if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
-if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.org")
 if(!require(xgboost)) install.packages("xgboost", repos = "http://cran.us.r-project.org")
 if(!require(magrittr)) install.packages("magrittr", repos = "http://cran.us.r-project.org")
 if(!require(vtreat)) install.packages("vtreat", repos = "http://cran.us.r-project.org")
@@ -33,8 +32,7 @@ if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-
 if(!require(vip)) install.packages("vip", repos = "http://cran.us.r-project.org")
 if(!require(VIM)) install.packages("VIM", repos = "http://cran.us.r-project.org")
 if(!require(doParallel)) install.packages("doParallel", repos = "http://cran.us.r-project.org")
-if(!require(mlr)) install.packages("mlr", repos = "http://cran.us.r-project.org")
-if(!require(h2o)) install.packages("h2o", repos = "http://cran.us.r-project.org")
+
 
 # Parallelization, which will be used to speed up hyperparameter tuning steps later.
 cl <- makeCluster(detectCores(logical = FALSE))
@@ -46,7 +44,9 @@ train <- read.csv("train.csv", stringsAsFactors = TRUE)
 test <- read.csv("test.csv", stringsAsFactors = TRUE)
 ```
 
-\pagebreak
+```{r, setup, include = FALSE}
+knitr::opts_chunk$set(fig.align = "center", fig.dim = c(7, 4), collapse = TRUE)
+```
 
 # Exploratory Data Analysis and Dataset Manipulations
 We begin by inspecting some basic properties of the dataset. The desired outcome column is named "SalePrice" and denotes a houses' sale price in dollars.
@@ -68,7 +68,7 @@ test$SalePrice <- 0 # Temporarily add a "SalePrice" column with zeros to `test`.
 dataset <- rbind(train, test) # Merge `train` and `test` into one `dataset`.
 ```
 
-\pagebreak
+
 
 ## Systematic Analysis and Manipulation of all Dataset Features
 
@@ -89,7 +89,7 @@ dataset$MSSubClass <- as.factor(dataset$MSSubClass)
 
 We plot "MSSubClass" (in the `train$Id` subset of `dataset`) versus "SalePrice" and observe that some of the most expensive houses are from the "20", "50", and "60" category of MSSubClass. "20" are "1-STORY 1946 & NEWER ALL STYLES", "50" are "1-1/2 STORY FINISHED ALL AGES", and "60" are "2-STORY 1946 & NEWER". From the scatterplot we can see that only a few houses are in "MSSubClass" "40" and "180". "MSSubClass" is therefore a variable that denotes type and age of houses. A somewhat troubling part about this feature is the slight underrepresentation of some of its categories, which could be detrimental for predictive purposes.
 
-```{r, echo = FALSE, fig.height = 4, fig.width = 9}
+```{r, echo = FALSE}
 # Boxplot of MSSubClass vs. SalePrice
 p1 <- dataset[train$Id, ] %>%
   group_by(MSSubClass) %>%
@@ -115,7 +115,6 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
 
 ### MSZoning: Identifies the general zoning classification of the sale.
 
@@ -152,14 +151,15 @@ rm(p1, p2)
 
 Next we are dealing with missing values in the "MSZoning" column. From the plot below we can see that "RL", or "residential low-density"" is clearly the most common value.
 
-```{r, echo = FALSE, message = FALSE, warning= FALSE, fig.height = 2, fig.width = 4}
+```{r, echo = FALSE, message = FALSE, warning= FALSE, fig.height = 3, fig.width = 5}
 dataset %>%
   ggplot(aes(x = MSZoning, fill = MSZoning)) +
   geom_histogram(stat = "count") +
   ggtitle("MSZoning distribution") +
   theme_bw() +
   theme(legend.position = "none") +
-  xlab("Number of houses")
+  xlab("MSZoning") +
+  ylab("Number of houses")
 ```
 
 Does "MSZoning" depend on "MSSubClass"? Below we can also see that for "MSSubClass" of "20", "residential low-density" is clearly the most common value, while it is less clear-cut for values of "30" and "70".
@@ -181,10 +181,11 @@ knn_model <- kNN(dataset, variable = "MSZoning", k = 9)
 knn_model[knn_model$MSZoning_imp == TRUE, ]$MSZoning
 
 # Missing value imputation.
-dataset$MSZoning[which(is.na(dataset$MSZoning))] <- knn_model[knn_model$MSZoning_imp == TRUE, ]$MSZoning
+dataset$MSZoning[which(is.na(dataset$MSZoning))] <-
+       knn_model[knn_model$MSZoning_imp == TRUE, ]$MSZoning
 ```
 
-\pagebreak
+
 
 ### LotFrontage: Linear feet of street connected to property
 
@@ -226,7 +227,8 @@ rm(p1, p2)
 Still, "LotFrontage" is decently correlated with "SalePrice" , as it can be interpreted as a measure of property size.
 
 ```{r, echo = TRUE}
-cor(na.omit(dataset$LotFrontage[train$Id]), dataset[train$Id, ]$SalePrice[-which(is.na(dataset$LotFrontage))])
+cor(na.omit(dataset$LotFrontage[train$Id]),
+    dataset[train$Id,]$SalePrice[-which(is.na(dataset$LotFrontage))])
 ```
 Does "LotFrontage" correlate well with "LotArea"? We plot the log-transformed "LotFrontage" against "LotArea".
 Indeed, we find that "LotFrontage" correlates well with "LotArea", although there are some houses with
@@ -274,7 +276,7 @@ dataset %>%
 dataset$LotFrontage <- as.numeric(dataset$LotFrontage)
 ```
 
-\pagebreak
+
 
 ### LotArea: Lot size in square feet
 
@@ -325,7 +327,7 @@ rm(p1, p2)
 cor(dataset[train$Id, ]$LotArea, dataset[train$Id, ]$SalePrice)
 ```
 
-\pagebreak
+
 
 ### Street: Type of road access to property
 
@@ -361,7 +363,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### Alley: Type of alley access to property
 
@@ -405,7 +407,6 @@ rm(p1, p2)
 ```
 
 
-\pagebreak
 
 ### LotShape: General shape of property
 
@@ -415,7 +416,7 @@ There are no missing values in LotShape.
 summary(dataset$LotShape)
 ```
 
-We plot "LotShape" aganst "SalePrice"  and observe that some of the more expensive houses have a slightly irregular "IR1" "LotShape." A "regular" "Reg" "LotShape" is indicative of a lower "SalePrice", but the category still contains many houses with larger "SalePrice" as well. Only a small number of houses has a really irregular "IR3" "LotShape." Overall, "LotShape" doesn't seem to influence "SalePrice" too much.
+We plot "LotShape" against "SalePrice"  and observe that some of the more expensive houses have a slightly irregular "IR1" "LotShape." A "regular" "Reg" "LotShape" is indicative of a lower "SalePrice", but the category still contains many houses with larger "SalePrice" as well. Only a small number of houses has a really irregular "IR3" "LotShape." Overall, "LotShape" doesn't seem to influence "SalePrice" too much.
 
 ```{r, echo = FALSE, fig.height = 3, fig.width = 6}
 # Boxplot of LotShape vs. SalePrice
@@ -441,7 +442,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### LandContour: Flatness of the property
 
@@ -451,7 +452,7 @@ rm(p1, p2)
 summary(dataset$LandContour)
 ```
 
-We plot "LandContour" against "SalePrice" and obsere that a "Banked - Quick and significant rise from street grade to building entry" entry in "LandContour" can be indicative of a lower "SalePrice". The most expensive houses are on level, nearly falt terrain. This feature will help to distinguish some of the lower priced houses from the higher priced ones.
+We plot "LandContour" against "SalePrice" and obsere that a "Banked - Quick and significant rise from street grade to building entry" entry in "LandContour" can be indicative of a lower "SalePrice". The most expensive houses are on level, nearly flat terrain. This feature will help to distinguish some of the lower priced houses from the higher priced ones.
 
 ```{r, echo = FALSE, fig.height = 3, fig.width = 7}
 # Boxplot of LandContour vs. SalePrice
@@ -477,7 +478,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### Utilities: Type of utilities available
 
@@ -519,7 +520,7 @@ This feature will not be helpful in "SalePrice" prediction, as "NoSeWa" is woefu
 dataset <- subset(dataset, select = -Utilities)
 ```
 
-\pagebreak
+
 
 ### LotConfig: Lot configuration
 
@@ -555,7 +556,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### LandSlope: Slope of property
 
@@ -591,7 +592,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### Neighborhood: Physical locations within Ames city limits
 
@@ -614,7 +615,7 @@ dataset[train$Id, ] %>%
   ggtitle("Boxplot of Neighborhood vs. SalePrice")
 ```
 
-\pagebreak
+
 
 ### Condition1: Proximity to various conditions
 
@@ -659,7 +660,8 @@ dataset$Condition1 <- as.character(dataset$Condition1)
 
 # We then merge the categories as described.
 dataset$Condition1[dataset$Condition1 %in% c("Artery", "Feedr")] <- "NearRoad"
-dataset$Condition1[dataset$Condition1 %in% c("RRAe", "RRAn", "RRNe", "RRNn")] <- "NearRailroad"
+dataset$Condition1[dataset$Condition1 %in% c("RRAe",
+                                      "RRAn", "RRNe", "RRNn")] <- "NearRailroad"
 dataset$Condition1[dataset$Condition1 %in% c("PosA", "PosN")] <- "NearPosOffSite"
 
 # We convert back into a factor with appropriate levels.
@@ -669,7 +671,7 @@ dataset$Condition1 <- factor(dataset$Condition1, levels = c("Norm",
 
 The plots of the changed Condition1 feature show that adjacency to a road or railroad tends to decrease "SalePrice", while adjacency to a positive off-site leads to an increase. Almost all expensive houses are in the "Normal" category.
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, fig.height = 3, fig.width = 8}
 # Boxplot of changed Condition1 vs. SalePrice
 p1 <- dataset[train$Id, ] %>%
   ggplot(aes(x = Condition1, y = SalePrice, color = Condition1)) +
@@ -693,7 +695,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### Condition2: Proximity to various conditions (if more than one is present)
 
@@ -721,7 +723,7 @@ dataset$Condition2 <- factor(dataset$Condition2, levels = c("Norm",
 ```
 
 
-We plot the changed "Condition" against "SalePrice". Clearly, being near a positive off-site raises the sale price, while adjacency to a busy road or railroad reduces it.
+We plot the changed "Condition2" against "SalePrice". Clearly, being near a positive off-site raises the sale price, while adjacency to a busy road or railroad reduces it.
 
 ```{r, echo = FALSE, fig.height = 3, fig.width = 6}
 # Boxplot of changed Condition2 vs. SalePrice.
@@ -734,7 +736,7 @@ dataset[train$Id, ] %>%
   ggtitle("Changed Condition2 vs. SalePrice")
 ```
 
-Are there houses which are adjacent to a road and a railroad simultaneously?
+Are there houses which are adjacent to both a road and a railroad simultaneously? If so, what is their average "SalePrice"?
 
 ```{r}
 dataset[train$Id, ] %>%
@@ -744,10 +746,10 @@ dataset[train$Id, ] %>%
 ```
 
 Indeed, the average "SalePrice" of houses with a "NearRoad" as well as a "NearRailRoad" entry is rather low.
-We will merge "Condition1" and "Condition2" into a single feature, as "Condition2" has very few entries.
-Prior to this, we will merge "NearRoad" and "NearRailRoad" into a single category, "NearNegOffSite".
+We will merge "Condition1" and "Condition2" into a single feature, as "Condition2" has very few entries in general. Prior to this, we will merge "NearRoad" and "NearRailRoad" into a single category, "NearNegOffSite", which simply indicates adjacency to a negative off-site feature (e.g. a road or railroad).
 
 ```{r}
+# Prior to modification convert to character and combine the entries into one.
 dataset$Condition1 <- as.character(dataset$Condition1)
 dataset$Condition1[which(dataset$Condition1 %in% c("NearRoad",
                                 "NearRailroad"))] <- "NearNegOffSite"
@@ -778,9 +780,9 @@ dataset$Condition <- dataset$Condition1
 dataset <- subset(dataset, select = -c(Condition1, Condition2))
 ```
 
-We then plot the engineered, merged "Condition" against "SalePrice". From the plots of the engineered "Condition" feature, we can see that being near one or even two negative off-sites (road, railroad) might indicate a lower "SalePrice". Adjacency to a positive off-site is associated with a higher "SalePrice", however all really expensive houses are in the "Normal" category.
+We then plot the engineered, merged "Condition" against "SalePrice". From the plots of the engineered "Condition" feature, we can see that being near one or even two negative off-sites (e.g. a road and/or a railroad) might indicate a lower "SalePrice". Adjacency to a positive off-site (e.g. a park or greenbelt etc... ) is associated with a higher "SalePrice", however all really expensive houses are in the "Normal" category.
 
-```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+```{r, echo = FALSE, fig.height = 4, fig.width = 8}
 # Boxplot of the merged Condition vs. SalePrice.
 p1 <- dataset[train$Id, ] %>%
   ggplot(aes(x = Condition, y = SalePrice, color = Condition)) +
@@ -803,7 +805,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### BldgType: Type of dwelling
 
@@ -838,7 +840,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### HouseStyle: Style of dwelling
 
@@ -848,7 +850,7 @@ summary(dataset$HouseStyle)
 ```
 
 We plot "HouseStyle" against "SalePrice" and observe that HouseStyle doesn't reveal very much about "SalePrice", but unfinished 1.5 and 2.5 storey houses tend to have lower "SalePrice" compared to completed ones.
-Unsurprisingly, the most expensive houses are in the "2Story" category, while another large set of expensve houses are in the "1Story" category.
+Unsurprisingly, the most expensive houses are in the "2Story" category, while another large set of expensive houses are in the "1Story" category.
 
 ```{r, echo = FALSE, fig.height = 3, fig.width = 8}
 # Boxplot of HouseStyle vs. SalePrice.
@@ -873,7 +875,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### OverallQual: Rates the overall material and finish of the house
 
@@ -890,7 +892,7 @@ dataset$OverallQual <- as.numeric(dataset$OverallQual)
 ```
 
 
-We plot "OverallQual" against "SalePrice" and notice its tremendous influence on a houses' "SalePrice". In the highest category, 10, there are 2 houses with unexpectedly low, and 2 houses with extremely high sale prices. This increases the range a lot. "OverallQual" will be very important for predicting a houses value.
+We plot "OverallQual" against "SalePrice" and notice its tremendous influence on a houses' "SalePrice". In the highest category, 10, there are 2 houses with unexpectedly low, and 2 houses with extremely high "SalePrice". This increases the range a lot, but is most likely due to other characteristics of these houses being less valuable. "OverallQual" will be very important for predicting a houses value.
 
 ```{r, echo = FALSE, fig.height = 3, fig.width = 8}
 # Boxplot of OverallQual vs. SalePrice.
@@ -921,8 +923,6 @@ There are only a few houses in the lowest "OverallQual" categories 1 and 2. Addi
 
 
 
-\pagebreak
-
 ### OverallCond: Rates the overall condition of the house
 
 
@@ -952,7 +952,7 @@ p1 <- dataset[train$Id, ] %>%
   scale_x_continuous(breaks = seq(1, 9, 1)) +
   theme_bw() +
   theme(legend.position = "none") +
-  ggtitle("Boxplot of OverallCond vs. SalePrice")
+  ggtitle("OverallCond vs. SalePrice")
 
 p2 <- dataset[train$Id, ] %>%
   ggplot(aes(x = OverallCond, y = SalePrice, color = factor(OverallCond))) +
@@ -961,7 +961,7 @@ p2 <- dataset[train$Id, ] %>%
   scale_x_continuous(breaks = seq(1, 9, 1)) +
   theme_bw() +
   theme(legend.position = "none") +
-  ggtitle("Boxplot of OverallCond vs. SalePrice")
+  ggtitle("OverallCond vs. SalePrice")
 
 grid.arrange(p1, p2, nrow = 1)
 
@@ -969,7 +969,6 @@ rm(p1, p2)
 ```
 
 
-\pagebreak
 
 ### YearBuilt: Original construction date
 
@@ -979,7 +978,7 @@ There are no missing values in "YearBuilt".
 summary(dataset$YearBuilt)
 ```
 
-We plot "YearBuilt" against "SalePrice" and observe that "SalePrice" is influenced by "YearBuilt", especially houses built after the 1950's tend to go up in value as visualized by the models.
+We plot "YearBuilt" against "SalePrice" and observe that "SalePrice" is influenced by "YearBuilt", especially houses built after the 1950's tend to go up in value as visualized by the models. It also becomes evident that there are relatively few entries before 1920.
 
 ```{r, echo = FALSE, fig.height = 3, fig.width = 8}
 # Scatterplot of YearBuilt. 
@@ -1003,7 +1002,7 @@ dataset[train$Id, ] %>%
 cor(dataset[train$Id, ]$YearBuilt, dataset[train$Id, ]$SalePrice)
 ```
 
-\pagebreak
+
 
 ### YearRemodAdd: Remodel date (same as construction date if no remodeling or additions)
 
@@ -1064,7 +1063,7 @@ For predictive purposes, this variable isn't very helpful and is therefore dropp
 dataset <- subset(dataset, select = -YearRemodAdd)
 ```
 
-\pagebreak
+
 
 ### RoofStyle: Type of roof
 
@@ -1136,7 +1135,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### Exterior1st: Exterior covering on house
 
@@ -1172,7 +1171,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### Exterior2nd: Exterior covering on house (if more than one material)
 
@@ -1211,8 +1210,9 @@ rm(p1, p2)
 There is a missing value in "Exterior1st" and "Exterior2nd", is it the same house? It turns out that it is.
 
 ```{r}
-dataset[which(is.na(dataset$Exterior1st)), ]$Exterior1st
-dataset[which(is.na(dataset$Exterior2nd)), ]$Exterior2nd
+# THe value is missing for the same house.
+dataset[which(is.na(dataset$Exterior1st)), ]$Id
+dataset[which(is.na(dataset$Exterior2nd)), ]$Id
 ```
 
 We use kNN-based imputation for "Exterior1st" and "Exterior2nd". The model predicts "Stucco" for this house.
@@ -1232,7 +1232,7 @@ dataset$Exterior1st[2152] <- knn_model[knn_model$Exterior1st_imp == TRUE, ]$Exte
 dataset$Exterior2nd[2152] <- knn_model[knn_model$Exterior2nd_imp == TRUE, ]$Exterior2nd
 ```
 
-\pagebreak
+
 
 ### MasVnrType: Masonry veneer type
 
@@ -1308,7 +1308,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### MasVnrArea: Masonry veneer area in square feet
 
@@ -1348,7 +1348,8 @@ knn_model <- kNN(dataset, variable = "MasVnrArea", k = 9)
 knn_model[knn_model$MasVnrArea_imp == TRUE, ]$MasVnrArea
 
 # Missing value imputation of MasVnrArea
-dataset[which(is.na(dataset$MasVnrArea)), ]$MasVnrArea <- knn_model[knn_model$MasVnrArea_imp == TRUE, ]$MasVnrArea
+dataset[which(is.na(dataset$MasVnrArea)), ]$MasVnrArea <-
+  knn_model[knn_model$MasVnrArea_imp == TRUE, ]$MasVnrArea
 ```
 
 ```{r, echo = FALSE, fig.height = 3, fig.width = 6}
@@ -1359,7 +1360,7 @@ dataset[train$Id, ] %>%
   scale_y_continuous(labels = scales::comma, breaks = seq(0, 800000, 100000)) +
   theme_bw() +
   theme(legend.position = "none") +
-  ggtitle("Scatterplot of MasVnrArea vs. SalePrice after missing value imputation") +
+  ggtitle("MasVnrArea vs. SalePrice after imputation") +
   geom_smooth(method = "lm")
 
 ```
@@ -1387,7 +1388,7 @@ dataset$MasVnrType[ind2] <- "None"
 
 ```
 
-\pagebreak
+
 
 ### ExterQual: Evaluates the quality of the material on the exterior 
 
@@ -1444,7 +1445,7 @@ dataset[train$Id, ] %>%
   geom_smooth(method = "lm")
 ```
 
-\pagebreak
+
 
 ### ExterCond: Evaluates the quality of the material on the exterior 
 
@@ -1499,7 +1500,7 @@ dataset[train$Id, ] %>%
 ```
 
 
-\pagebreak
+
 
 ### Foundation: Type of foundation
 
@@ -1535,7 +1536,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### BsmtQual: Evaluates the height of the basement
 
@@ -1592,7 +1593,7 @@ dataset %>%
   ggtitle("BsmtQual vs. GrLivArea")
 ```
 
-\pagebreak
+
 
 ### BsmtCond: Evaluates the general condition of the basement
 
@@ -1638,7 +1639,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### BsmtExposure: Refers to walkout or garden level walls
 
@@ -1685,7 +1686,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### BsmtFinType1: Rating of basement finished area
 
@@ -1704,7 +1705,7 @@ dataset$BsmtFinType1 <- factor(dataset$BsmtFinType1, levels = c("None", "Unf",
                                               "LwQ", "Rec", "BLQ", "ALQ", "GLQ"))
 ```
 
-We plot "BsmtFinType1" against "SalePrice" and observe that houses with unfinished or good quality living quarter type of finish come with higher "SalePrice".
+We plot "BsmtFinType1" against "SalePrice" and observe that houses with unfinished ("Unf") or good quality living quarter ("GLQ") type of finish come with higher "SalePrice".
 
 
 ```{r, echo = FALSE, fig.height = 3, fig.width = 7}
@@ -1730,7 +1731,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### BsmtFinType2: Rating of basement finished area (if multiple types)
 
@@ -1774,7 +1775,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### Basement square feet variables
 
@@ -1829,11 +1830,11 @@ The individual basement area variables seem to be redundant, but we observed tha
 dataset <- subset(dataset, select = -c(BsmtFinSF1, BsmtFinSF2, BsmtUnfSF))
 ```
 
-\pagebreak
+
 
 ### Bathroom variables
 
-The number of total bathrooms can be indicative of a houses size. In the dataset there are 4 different variables describing bathrooms. It could be useful to combine these into a single feature. While each bathroom variable individually has little influence on "SalePrice", combined they might become a stronger predictor. We will value different types of bath according to their "SalePrice" correlation ratio compared to "FullBaths". As shown below, we will create a new variable "TotalBaths" and drop the individual variables afterwards. THe contribution of different types of baths (i.e. "FullBath", "HalfBath", "BsmtFullBath", "BsmtHalfBath") are weighted according to their correlation with "SalePrice".
+The number of total bathrooms can be indicative of a houses size. In the dataset there are 4 different variables describing bathrooms. It could be useful to combine these into a single feature. While each bathroom variable individually has little influence on "SalePrice", combined they might become a stronger predictor. We will value different types of bath according to their "SalePrice" correlation ratio compared to "FullBaths". As shown below, we will create a new variable "TotalBaths" and drop the individual variables afterwards. The contribution of different types of baths (i.e. "FullBath", "HalfBath", "BsmtFullBath", "BsmtHalfBath") are weighted according to their correlation with "SalePrice".
 
 ```{r}
 # Full bathrooms have the strongest correlation with "SalePrice"
@@ -1906,7 +1907,7 @@ dataset[train$Id, ] %>%
   geom_smooth(method = "lm")
 ```
 
-\pagebreak
+
 
 ### Heating: Type of heating
 
@@ -1944,7 +1945,7 @@ rm(p1, p2)
 ```
 
 
-\pagebreak
+
 
 ### HeatingQC: Heating quality and condition
 
@@ -1997,7 +1998,7 @@ dataset[train$Id, ] %>%
 ```
 
 
-\pagebreak
+
 
 ### CentralAir: Central air conditioning
 
@@ -2033,7 +2034,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### Electrical: Electrical system
 
@@ -2052,7 +2053,7 @@ which(is.na(dataset$Electrical))
 # The house with the missing "Electrical" value seems pretty normal.
 # dataset[1380, ] 
 
-# From the plot we can see that "SBrkr" or "standard circuit breakers"" are the most common value.
+# "SBrkr" is the most common value.
 plot(dataset[, "Electrical"],
      col = "orange",
      main = "Electrical",
@@ -2096,7 +2097,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### 1stFlrSF: First Floor square feet, 2ndFlrSF: Second floor square feet, LowQualFinSF: Low quality finished square feet (all floors)
 
@@ -2119,7 +2120,7 @@ cor(dataset$GrLivArea, (dataset$X1stFlrSF + dataset$X2ndFlrSF + dataset$LowQualF
 dataset <- subset(dataset, select = -c(X1stFlrSF, X2ndFlrSF, LowQualFinSF))
 ```
 
-\pagebreak
+
 
 ### GrLivArea: Above grade (ground) living area square feet
 
@@ -2158,7 +2159,7 @@ which(dataset$GrLivArea > 4500 & dataset$SalePrice < 250000 & dataset$Id %in% tr
 # dataset[1299, ]
 ```
 
-\pagebreak
+
 
 ### Bedroom: Bedrooms above grade (does NOT include basement bedrooms)
 
@@ -2183,7 +2184,7 @@ dataset[train$Id, ] %>%
   geom_smooth(method = "lm")
 ```
 
-\pagebreak
+
 
 ### Kitchen: Kitchens above grade
 
@@ -2216,7 +2217,7 @@ A few houses actually have no kitchen above ground.
 which(dataset$KitchenAbvGr == 0)
 ```
 
-\pagebreak
+
 
 ### KitchenQual: Kitchen quality
 
@@ -2281,7 +2282,7 @@ dataset[train$Id, ] %>%
   geom_smooth(method = "lm")
 ```
 
-\pagebreak
+
 
 ### TotRmsAbvGrd: Total rooms above grade (does not include bathrooms)
 
@@ -2307,7 +2308,7 @@ dataset[train$Id, ] %>%
   geom_smooth(method = "lm")
 ```
 
-\pagebreak
+
 
 ### Functional: Home functionality (Assume typical unless deductions are warranted)
 
@@ -2357,7 +2358,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 
 ### Fireplaces: Number of fireplaces
@@ -2387,7 +2388,7 @@ dataset[train$Id, ] %>%
   geom_smooth(method = "lm")
 ```
 
-\pagebreak
+
 
 ### FireplaceQu: Fireplace quality
 
@@ -2429,11 +2430,11 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### GarageType: Garage location
 
-There are a lot of missing values in "GarageType". # From the data description we know that "No Garage" was originally encoded as "NA". We will replace those with "None" and fix factor levels.
+There are a lot of missing values in "GarageType". From the data description we know that "No Garage" was originally encoded as "NA". We will replace those with "None" and fix factor levels.
 
 ```{r}
 summary(dataset$GarageType)
@@ -2471,7 +2472,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### GarageYrBlt: Year garage was built
 
@@ -2514,7 +2515,7 @@ dataset %>%
   ggplot(aes(x = GarageYrBlt, y = YearBuilt, color = GarageType)) +
   geom_point(alpha = 0.6) +
   theme_bw() +
-  ggtitle("GarageYrBlt vs. YearBlt")
+  ggtitle("GarageYrBlt vs. YearBuilt")
 ```
 
 Interestingly, there are some houses with garage building years prior to the house itself. Perhaps building the house took much longer than the garage. Overall, "GarageYrBlt" does not add much in terms of "SalePrice" predictive power. As we can't turn this variable into a factor with a level "None" for not having a garage, we have to either impute the houses' "YearBuilt" or remove "GarageYrBlt" entirely. We will do the latter, as there are more than enough variables about Garages in the dataset and imputing "YearBuilt" might penalize houses that actually acquired their garage more recently.
@@ -2524,7 +2525,7 @@ Interestingly, there are some houses with garage building years prior to the hou
 dataset <- subset(dataset, select = - GarageYrBlt)
 ```
 
-\pagebreak
+
 
 
 ### GarageFinish: Interior finish of the garage
@@ -2567,7 +2568,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### GarageCars: Size of garage in car capacity, GarageArea: Size of garage in square feet
 
@@ -2637,7 +2638,7 @@ In order to avoid having two extremely colinear variables we will drop "GarageAr
 dataset <- subset(dataset, select = -GarageArea)
 ```
 
-\pagebreak
+
 
 ### GarageQual: Garage quality
 
@@ -2680,7 +2681,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### GarageCond: Garage Condition
 
@@ -2722,7 +2723,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### PavedDrive: Paved driveway
 
@@ -2758,7 +2759,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### Variables related to porches
 
@@ -2945,13 +2946,17 @@ dataset <- subset(dataset, select = -c(OpenPorchSF,
       EnclosedPorch, X3SsnPorch, ScreenPorch, WoodDeckSF))
 ```
 
-\pagebreak
+
 
 ### PoolArea: Pool area in square feet
 
-There are no missing values in "PoolArea".
+There are no missing values in "PoolArea". We convert it to be numerical.
 
 ```{r}
+# We convert "PoolArea" to numerical.
+dataset$PoolArea <- as.numeric(dataset$PoolArea)
+
+# Summary.
 summary(dataset$PoolArea)
 ```
 
@@ -2970,7 +2975,7 @@ dataset[train$Id, ] %>%
   ggtitle("PoolArea vs. SalePrice")
 ```
 
-\pagebreak
+
 
 
 ### PoolQC: Pool quality
@@ -3000,7 +3005,7 @@ dataset[train$Id, ] %>%
   ggtitle("PoolQC vs. SalePrice")
 ```
 
-\pagebreak
+
 
 ### Fence: Fence quality
 
@@ -3044,7 +3049,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 
 ### MiscFeature: Miscellaneous feature not covered in other categories
@@ -3063,7 +3068,7 @@ dataset$MiscFeature <- factor(dataset$MiscFeature, levels = c("None",
                               "TenC", "Shed", "Othr", "Gar2", "Elev"))
 ```
 
-From the plots we can see that While having a tennis court might increase "SalePrice", there are simply not enough data points for the "MiscFeature" variable to be very useful.
+From the plots we can see that while having a tennis court might increase "SalePrice", there are simply not enough data points for the "MiscFeature" variable to be very useful.
 
 
 ```{r, echo = FALSE, fig.height = 3, fig.width = 7}
@@ -3090,13 +3095,17 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### MiscVal: $Value of miscellaneous feature
 
-There are no missing values in "MiscVal".
+There are no missing values in "MiscVal". We convert it to be numerical.
 
 ```{r}
+# We convert "MiscVal"" to numerical.
+dataset$MiscVal <- as.numeric(dataset$MiscVal)
+
+# Summary.
 summary(dataset$MiscVal)
 ```
 
@@ -3116,7 +3125,7 @@ dataset[train$Id, ] %>%
   ggtitle("MiscVal vs. SalePrice")
 ```
 
-\pagebreak
+
 
 ### MoSold: Month Sold (MM), YrSold: Year Sold (YYYY)
 
@@ -3124,6 +3133,10 @@ dataset[train$Id, ] %>%
 We plot "MonthSold" and "YearSold" - do these features influence "SalePrice"? We plot the amount of sold houses per month. Most houses are sold during the Spring/Summer months of the year, as indicated by the red dashed lines.
 
 ```{r, echo = FALSE, fig.height = 3, fig.width = 7}
+# We convert "YrSold" and "MoSold" to numerical.
+dataset$YrSold <- as.numeric(dataset$YrSold)
+dataset$MoSold <- as.numeric(dataset$MoSold)
+
 # We plot the amount of sold houses per month. Most houses are sold during the Spring/Summer months of the year.
 dataset %>%
   group_by(MoSold) %>%
@@ -3134,7 +3147,8 @@ dataset %>%
   xlab("Month") +
   scale_x_continuous(breaks = seq(1, 12, 1)) +
   geom_vline(xintercept = 3, col = "red", linetype = "dashed") +
-  geom_vline(xintercept = 9, col = "red", linetype = "dashed")
+  geom_vline(xintercept = 9, col = "red", linetype = "dashed") +
+  ggtitle("House sales per month")
 ```
 
 Does this influence "SalePrice"? "MoSold" doesn't seem to influence "SalePrice" at all. There are simply more houses being sold in the summer months.
@@ -3159,7 +3173,8 @@ dataset %>%
   ggplot(aes(x = YrSold, y = n)) +
   geom_line(col = "blue") +
   ylab("Number of houses sold") +
-  xlab("Year")
+  xlab("Year") +
+  ggtitle("House sales per year")
 ```
   
 "YrSold" doesn't seem to influence "SalePrice" at all, even though we know that the financial crisis of 2008 might have impacted prices.
@@ -3174,7 +3189,7 @@ dataset[train$Id, ] %>%
   ggtitle("Distribution of SalePrice over YrSold")
 ```
 
-\pagebreak
+
 
 ### SaleType: Type of sale
 
@@ -3225,7 +3240,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### SaleCondition: Condition of sale
 
@@ -3263,7 +3278,7 @@ grid.arrange(p1, p2, nrow = 1)
 rm(p1, p2)
 ```
 
-\pagebreak
+
 
 ### Skewedness of the outcome variable SalePrice
 
@@ -3273,7 +3288,7 @@ Monetary values are often log-normally distributed. How does "SalePrice" look li
 dataset[train$Id, ] %>%
   ggplot(aes(SalePrice)) +
   geom_histogram(bins = 30, color = "black", fill = "orange") +
-  ggtitle("Histogram of SalePrice distribution")
+  ggtitle("Distribution of SalePrice")
 ```
 
 We can check for skewedness with a function. The skew is considerably higher than 0.8. A log-transformation could potentially lead to "SalePrice" being more normal. It is plotted below.
@@ -3287,7 +3302,7 @@ dataset[train$Id, ] %>%
   ggplot(aes(log1p(SalePrice))) +
   geom_histogram(bins = 30, color = "black", fill = "orange") +
   xlab("Log-transformed SalePrice") +
-  ggtitle("Histogram of log-transformed SalePrice distribution")
+  ggtitle("Distribution of log-transformed SalePrice")
 ```
 
 We log-transform "SalePrice".
@@ -3296,7 +3311,7 @@ We log-transform "SalePrice".
 dataset$SalePrice <- log1p(dataset$SalePrice)
 ```
 
-\pagebreak
+
 
 ## Summary of Data Analysis and Manipulations
 
@@ -3317,7 +3332,7 @@ Missing values were mostly produced by erroneous encoding in the dataset, where 
 
 
 
-\pagebreak
+
 
 # Modelling approaches and results
 
@@ -3388,7 +3403,8 @@ model_2_multi_lm_pred <- predict(model_2_multi_lm, newdata = test_set)
 model_2_multi_lm_RMSE <- RMSE(model_2_multi_lm_pred, test_set$SalePrice) 
 
 # Record RMSE of the model.
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Multi_lm_several", RMSE = model_2_multi_lm_RMSE))
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Multi_lm_several",
+                                              RMSE = model_2_multi_lm_RMSE))
 
 # Print RMSEs.
 model_rmses %>% knitr::kable()
@@ -3409,7 +3425,8 @@ model_3_multi_lm_pred <- predict(model_3_multi_lm, newdata = test_set)
 model_3_multi_lm_RMSE <- RMSE(model_3_multi_lm_pred, test_set$SalePrice) 
 
 # Record RMSE of the model.
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Multi_lm_all", RMSE = model_3_multi_lm_RMSE))
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Multi_lm_all",
+                                          RMSE = model_3_multi_lm_RMSE))
 
 # Print RMSEs.
 model_rmses %>% knitr::kable()
@@ -3444,7 +3461,7 @@ newvars <- treatment_plan %>%
 # Treatment of train_set.
 train_set_treated <- vtreat::prepare(treatment_plan, train_set,  varRestriction = newvars)
 
-# Treaement of test_set.
+# Treatment of test_set.
 test_set_treated <- vtreat::prepare(treatment_plan, test_set,  varRestriction = newvars)
 ```
 
@@ -3503,7 +3520,7 @@ The RMSE has worsened compared to the simple linear regression approach. But can
 
 ## Hyperparameter tuning of the XGBoost algorithm "xgbTree" with caret
 
-We will evaluate different values for the hyperparameters of the "xgbTree" algorithm in the `caret` package. As expansive grid searches become computationally very expensive the more parameters are evaluated at the same time (easily into the thousands of models), we will instead evaluate no more than 2 parameters per tuning round and try to visually inspect their influence on model performance. In the first round of tunings, we will determine `max_depth`, the maximal depth of trees to use. Larger trees allow faster learning, but make the model more and more complex and prone to overfitting. The increased model complexity means that the model learns variable relations that might be very specific to the training data and not generalize well to new data. In addition, we will examine different values of `min_child_weight`, which defines the minimum sum of weights of all observations required in a child. Higher values here will counteract overfitting by preventing the model from learning variable relations that might be very specific to the particular sample which was selected for a particular tree. Large values of `min_child_weight` might lead to underfitting the training data. We will select some fairly standard values for the other hyperparameters to avoid exploding the number of models we will train in this first tuning step. We will use 3-times repeated 3-fold cross-validation. In addition, we make use of the `caret` `preProcess` option to remove near-zero variance predictors and to center and scale our data prior to model fitting.
+We will evaluate different values for the hyperparameters of the "xgbTree" algorithm in the `caret` package. As expansive grid searches become computationally very expensive the more parameters are evaluated at the same time (easily into the thousands of models), we will instead evaluate no more than 2 parameters per tuning round and try to visually inspect their influence on model performance. In the first round of tunings, we will determine `max_depth`, the maximal depth of trees to use. Larger trees allow faster learning, but make the model more and more complex and prone to overfitting. The increased model complexity means that the model learns variable relations that might be very specific to the training data and not generalize well to new data. In addition, we will examine different values of `min_child_weight`, which defines the minimum sum of weights of all observations required in a child. Higher values here will counteract overfitting by preventing the model from learning variable relations that might be very specific to the particular sample which was selected for a particular tree. Large values of `min_child_weight` might lead to underfitting the training data. We will select some fairly standard values for the other hyperparameters to avoid exploding the number of models we will train in this first tuning step. We will use 3-times repeated 5-fold cross-validation. In addition, we make use of the `caret` `preProcess` option to remove near-zero variance predictors and to center and scale our data prior to model fitting.
 
 After training and fitting the model, we will visually inspect which set of hyperparameters achieved the lowest RMSE value as determined by cross-validation. Afterwards we will predict against our `test_set` ("hold-out-set") and determine "out-of-bag" RMSE.
 
@@ -3527,7 +3544,7 @@ tuneGrid <- expand.grid(
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
   method = "repeatedcv", 
-  number = 3,
+  number = 5,
   repeats = 3,
   verboseIter = FALSE,
   allowParallel = TRUE
@@ -3550,7 +3567,7 @@ xgb_1st_tuning <- caret::train(
 xgb_1st_tuning$bestTune
 
 # Visualization of the 1st tuning round.
-ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
+ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
 ```
 
 From the tuning plots and the selected best parameters we can see that relatively shallow trees of `max_depth` 3 were chosen, along with a moderate `min_child_weight` of 4. The number of boosting iterations to reach the lowest RMSE with these settings is also a moderate 550. After some further tuning of other hyperparameters, we will see whether a slower learning rate `eta` would improve things.
@@ -3598,7 +3615,7 @@ tuneGrid <- expand.grid(
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
   method = "repeatedcv", 
-  number = 3,
+  number = 5,
   repeats = 3,
   verboseIter = FALSE,
   allowParallel = TRUE
@@ -3621,7 +3638,7 @@ xgb_2nd_tuning <- caret::train(
 xgb_2nd_tuning$bestTune
 
 # Visualization of the 2nd tuning round.
-ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
+ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
 ```
 
 We can now predict on `test_set` and record "out-of-bag" RMSE. We note a small improvement over the first tuning round.
@@ -3645,7 +3662,7 @@ In the third and last round of hyperparameter tuning we will determine the optim
 ```{r, warning = FALSE, message = FALSE}
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 2000, 50),
+  nrounds = seq(150, 2500, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = c(0.025, 0.05, 0.075, 0.1),
   gamma = 0,
@@ -3657,7 +3674,7 @@ tuneGrid <- expand.grid(
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
   method = "repeatedcv", 
-  number = 3,
+  number = 5,
   repeats = 3,
   verboseIter = FALSE,
   allowParallel = TRUE
@@ -3680,7 +3697,7 @@ xgb_3rd_tuning <- caret::train(
 xgb_3rd_tuning$bestTune
 
 # Visualization of the 3rd tuning round.
-ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
+ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
 
 ```
 
@@ -3700,7 +3717,7 @@ model_rmses %>% knitr::kable()
 
 ### Fitting the model with optimized hyperparameters on the entire training subset
 
-As a final step we fit the model with the above determined parameters on the entire training subset `train`. Accordingly, `train` has to be prepared via "one-hot-encoding". We can then fit the final "xgbTree" model with the hyperparameters from the final tuning round. We are using 3-times repeated 5-fold cross-validation in this final step.
+As a final step we fit the model with the above determined parameters on the entire training subset `train`. Accordingly, `train` has to be prepared via "one-hot-encoding". We can then fit the final "xgbTree" model with the hyperparameters from the final tuning round.
 
 ```{r}
 # We select all relevant predictors
@@ -3721,7 +3738,7 @@ test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
 
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 2000, 50),
+  nrounds = seq(150, 2500, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = xgb_3rd_tuning$bestTune$eta,
   gamma = 0,
@@ -3751,17 +3768,17 @@ xgb_final_model <- caret::train(
 )
 ```
 
-We can then visualize the final model and take a look at the lowest cross-validation RMSE value, prior to predicting against `test` (which doesn't contain a "SalePrice" column).
+We can then visualize the final model and take a look at the lowest cross-validation RMSE value, prior to predicting against `test` (which doesn't contain a "SalePrice" column). The plot of the final model clearly shows that a lower learning rate `eta` can reach a lower RMSE value with increasing iterations, as is the case for `eta` of 0.025. At an `eta` of 0.1 we can see that learning is already concluded after about 500 boosting iterations, however the achieved RMSE is a little bit higher. 
 
-```{r, error = FALSE, message = FALSE, warning = FALSE, fig.height = 3, fig.width = 6}
+```{r, error = FALSE, message = FALSE, warning = FALSE}
 # Visualization of the final fitted model.
-ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.125, 0.140))
+ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.1225, 0.14))
 
 # Lowest RMSE obtained in cross-validation.
 min(xgb_final_model$results$RMSE)
 ```
 
-Finally, we can predict on `test` and prepare the submission file for entry into the **Kaggle** competition, where the submission is evaluated and scored on a public leaderboard. At the time of this writing, the generated submission file scored an RMSE of 0.12588 and achieved a rank of 1471 on the public leaderboard of the respective competition. The public leaderboard is calculated with approximately 50% of the test data and the final results will be based on the other 50%, so final scores are subject to change. Curiously, the actual public score at **Kaggle** is very close to the RMSE determined by cross-validation during the final model fitting above (RMSE of `min(xgb_final_model$results$RMSE)`).
+Finally, we can predict on `test` and prepare the submission file for entry into the **Kaggle** competition, where the submission is evaluated and scored on a public leaderboard. At the time of this writing, the generated submission file scored an RMSE of 0.12313 and achieved a rank of 1248 on the public leaderboard of the respective competition. The public leaderboard is calculated with approximately 50% of the test data and the final results will be based on the other 50%, so final scores are subject to change. Curiously, the actual public score at **Kaggle** is very close to the RMSE determined by cross-validation during the final model fitting above (RMSE of `r min(xgb_final_model$results$RMSE)`).
 
 ```{r}
 # Predicting on test. We take the exp() as we log-transformed "SalePrice".
@@ -3776,18 +3793,17 @@ write.table(my_submission, file = "submission.csv",
             sep = ",")
 ```
 
-\pagebreak
+
 
 # Concluding remarks
 
 For this "Choose your own" capstone project I've conducted exploratory data analysis, wrangled the data in various ways, and built a machine learning algorithm with the `caret` package to predict house prices in a dataset from [**Kaggle**](https://www.kaggle.com/c/house-prices-advanced-regression-techniques). The dataset came with a relatively large number of variables containg all kinds of information about houses. I've shown that certain variables have a much larger influence on a houses' sale price than others and how some variables could potentially do more harm than good if, for example, they have many categories with very few entries. I've imputed missing values via kNN-based predictions wherever feasible and noted that mostly the variables' mode was predicted. Most missing values were generated by erroneous variable encoding in the dataset itself, which was easily fixed by simple replacement with appropriate terms. I've conducted some slight feature engineering, for example by combining several individual variables into one.
 
-I developed my algorithm in several steps by tuning different sets of hyperparameters on a training subset and then validating its performance on a test subset of data. The thusly determined hyperparameters were then used in a final model fitting process on the entire `train` dataset. The predictions of the resulting model on `test` were then used to generate a submission file, which was submitted to **Kaggle** and achieved an public leaderboard rank of 1471 with an RMSE of 0.12588 at the time of writing (some of the best submitted models score RMSEs of around 0.105). I've also compared the performance of my developed algorithm with the performance of a simple multivariate linear regression, which performed quite well considering its minimal computational cost in comparison.
+I developed my algorithm in several steps by tuning different sets of hyperparameters on a training subset and then validating its performance on a test subset of data. The thusly determined hyperparameters were then used in a final model fitting process on the entire `train` dataset. The predictions of the resulting model on `test` were then used to generate a submission file, which was submitted to **Kaggle** and achieved an public leaderboard rank of 1248 with an RMSE of 0.12313 at the time of writing (some of the best submitted models score RMSEs of around 0.105). I've also compared the performance of my developed algorithm with the performance of a simple multivariate linear regression, which performed quite well considering its minimal computational cost in comparison.
 
 Further improvements in model performance could be achieved by employing an ensemble of well-trained machine learning algorithms ("stacked regressions"). However, the goal of my project was not to score the lowest possible RMSE, but to practice data exploration, wrangling and building a relatively simple and interpretable algorithm. Due to the sheer number of features, I ended up mostly not going into greater depth in my data exploration. By systematically exploring each and every feature of the dataset, I acquired a certain intuition about their possible contribution to the outcome variable "SalePrice". It also helped in dealing with missing values and finding opportunities for some slight feature engineering. Optimally, I would have tested the influence on model performance of each and every modification I have applied to the dataset to test and see whether it was actually beneficial. However, this would have required very frequent re-running of the modelling process and probably would lead to a large increase in the size of the report. I ended up completely re-doing the entire data exploration part three times and ultimately decided not to test the influence of my dataset modifications in isolation. I also spent large amounts of time selecting hyperparameters for my algorithm and have probably re-run every part over a hundred times (throughout, I was able to iteratively improve my algorithms' score on **Kaggle**), even though the improvements in terms of RMSE were relatively minor. Through this I learned that simply "turning the big knobs" (as in, `nrounds`, `max_depth`, and `eta` for "xgbTree" in `caret`) already leads to decent performance improvements. 
 
 
-\pagebreak
 
 # Acknowledgements
 

@@ -7,7 +7,6 @@
 if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
 if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org", dependencies = c("Depends", "Suggests"))
 if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
-if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.org")
 if(!require(xgboost)) install.packages("xgboost", repos = "http://cran.us.r-project.org")
 if(!require(magrittr)) install.packages("magrittr", repos = "http://cran.us.r-project.org")
 if(!require(vtreat)) install.packages("vtreat", repos = "http://cran.us.r-project.org")
@@ -15,12 +14,11 @@ if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-
 if(!require(vip)) install.packages("vip", repos = "http://cran.us.r-project.org")
 if(!require(VIM)) install.packages("VIM", repos = "http://cran.us.r-project.org")
 if(!require(doParallel)) install.packages("doParallel", repos = "http://cran.us.r-project.org")
-if(!require(mlr)) install.packages("mlr", repos = "http://cran.us.r-project.org")
-if(!require(h2o)) install.packages("h2o", repos = "http://cran.us.r-project.org")
+
 
 # Parallelization, which will be used to speed up hyperparameter tuning steps later.
-cls <- makeCluster(detectCores(logical = FALSE))
-registerDoParallel(cls)
+cl <- makeCluster(detectCores(logical = FALSE))
+registerDoParallel(cl = cl)
 
 # We import the training and testing data subsets (files from Kaggle).
 train <- read.csv("train.csv", stringsAsFactors = TRUE)
@@ -65,6 +63,8 @@ summary(dataset) # There's a lot of NA values in many columns
 # Whenever we work with the SalePrice variable, we will subset "dataset" with the train$Id, as "test" has
 # no entries for it.
 
+
+
 #####
 # MSSubClass: Identifies the type of dwelling involved in the sale.
 #####
@@ -100,6 +100,8 @@ grid.arrange(MSSubClass_boxplot, MSSubClass_scatterplot, nrow = 1)
 # From the boxplot we can notice that some of the most expensive houses are from the "20", "50", and "60" category of MSSubClass.
 # "20" are "1-STORY 1946 & NEWER ALL STYLES", "50" are "1-1/2 STORY FINISHED ALL AGES", and "60" are "2-STORY 1946 & NEWER".
 # From the scatterplot we can see that only a few houses are in MSSubClass "40" and "180".
+
+
 
 #####
 # MSZoning: Identifies the general zoning classification of the sale.
@@ -242,6 +244,8 @@ dataset %>%
 # We change variable encoding to numeric
 dataset$LotFrontage <- as.numeric(dataset$LotFrontage)
 
+
+
 #####
 # LotArea: Lot size in square feet
 #####
@@ -313,6 +317,8 @@ grid.arrange(Street_boxplot, Street_scatterplot, nrow = 1)
 # From the plots we can see that the type of road access to the property matters in terms of sale price.
 # However, only a few houses have gravel values in Street.
 
+
+
 #####
 # Alley: Type of alley access to property
 #####
@@ -345,9 +351,6 @@ Alley_scatterplot <- dataset[train$Id, ] %>%
   theme(legend.position = "none")
 
 grid.arrange(Alley_boxplot, Alley_scatterplot, nrow = 1)
-
-
-
 
 
 
@@ -416,6 +419,8 @@ grid.arrange(LandContour_boxplot, LandContour_scatterplot, nrow = 1)
 # can be indicative of a lower sale price of the house. The most expensive houses are on level, nearly flat terrain.
 # This feature will help to distinguish some of the lower priced from the higher priced houses.
 
+
+
 #####
 # Utilities: Type of utilities available
 #####
@@ -449,6 +454,7 @@ grid.arrange(Utilities_boxplot, Utilities_scatterplot, nrow = 1)
 dataset <- subset(dataset, select = -Utilities)
 
 
+
 #####
 # LotConfig: Lot configuration
 #####
@@ -480,6 +486,7 @@ grid.arrange(LotConfig_boxplot, LotConfig_scatterplot, nrow = 1)
 # From the plots we can see that LotConfig doesn't appear to influence sale price very much.
 
 
+
 #####
 # LandSlope: Slope of property
 #####
@@ -509,6 +516,8 @@ grid.arrange(LandSlope_boxplot, LandSlope_scatterplot, nrow = 1)
 
 # From the plots we can see that a gentle land slope can be predictive of a higher house sale price.
 
+
+
 #####
 # Neighborhood: Physical locations within Ames city limits
 #####
@@ -527,6 +536,8 @@ dataset[train$Id, ] %>%
 
 # From the plot we can see that Northridge and Northridge High are where some of the most expensive houses are situated.
 # The respective Neighborhood is a strong indicator for a houses sale price.
+
+
 
 #####
 # Condition1: Proximity to various conditions
@@ -595,6 +606,8 @@ grid.arrange(Condition1_boxplot, Condition1_scatterplot, nrow = 1)
 # tends to decrease sale price, while adjacency to a positive off-site leads leads to an increase.
 # Almost all expensive houses are in the "normal" category.
 
+
+
 #####
 # Condition2: Proximity to various conditions (if more than one is present)
 #####
@@ -633,6 +646,7 @@ dataset[train$Id, ] %>%
 
 
 ### Merging of Condition1 and Condition2 ###
+
 # As Condition2 has a rather low amount of entries, we will merge Condition 1 and 2.
 # Prior to this, we will merge "NearRoad" and "NearRailRoad" into a single category, "NearNegOffSite".
 dataset$Condition1 <- as.character(dataset$Condition1)
@@ -681,6 +695,7 @@ grid.arrange(Condition_boxplot, Condition_scatterplot, nrow = 2)
 # Adjacency to a positive off-site is associated with a higher sale price, however all expensive houses are in the "Normal" category.
 
 
+
 #####
 # BldgType: Type of dwelling
 #####
@@ -711,6 +726,8 @@ grid.arrange(BldgType_boxplot, BldgType_scatterplot, nrow = 1)
 # From the plots we can see that the most expensive houses are all detached single-family houses ("1Fam").
 # Even then, there must be other distinguishing features behind those, as the median sale price of 1Fam houses isn't any higher compared to the other categories.
 
+
+
 #####
 # HouseStyle: Style of dwelling
 #####
@@ -739,6 +756,7 @@ grid.arrange(HouseStyle_boxplot, HouseStyle_scatterplot, nrow = 1)
 
 # HouseStyle doesn't reveal very much about sale price, but unfinished 1.5 and 2.5 storey houses tend to have lower sale prices compared to completed ones.
 # Unsurprisingly, the most expensive houses are in the 2Story category, while another large set of expensve houses are in the 1Story category.
+
 
 
 #####
@@ -786,7 +804,6 @@ dataset$OverallQual <- as.numeric(dataset$OverallQual)
 
 
 
-
 #####
 # OverallCond: Rates the overall condition of the house
 #####
@@ -794,8 +811,8 @@ dataset$OverallQual <- as.numeric(dataset$OverallQual)
 # There are no missing values in OverallCond
 summary(dataset$OverallCond)
 
-# OverallCond should be an ordinal factor variable, not an integer.
-dataset$OverallCond <- factor(dataset$OverallCond)
+# OverallCond should be numeric.
+dataset$OverallCond <- as.numeric(dataset$OverallCond)
 
 # Boxplot of OverallCond vs. SalePrice.
 p1 <- dataset[train$Id, ] %>%
@@ -823,7 +840,6 @@ rm(p1, p2)
 # Contrary to intuition, OverallCond is much less predictive of a houses sale price and there is not a single house with a "very excellent" condition.
 # We observe that the most expensive houses are between 4 - 9, with 5 having most of them. OverallCond below 5 holds houses with lower sale price.
 # The lower two levels hold only very few houses.
-
 
 
 
@@ -856,6 +872,7 @@ cor(dataset[train$Id, ]$YearBuilt, dataset[train$Id, ]$SalePrice)
 # From the plot we can see that SalePrice is influenced by YearBuilt, especially houses built after the 1950's tend to go up in value.
 
 
+
 #####
 # YearRemodAdd: Remodel date (same as construction date if no remodeling or additions)
 #####
@@ -879,7 +896,7 @@ dataset[train$Id, ] %>%
 cor(dataset[train$Id, ]$YearRemodAdd, dataset[train$Id, ]$SalePrice)
 
 # There is also a large correlation between YearRemodAdd and YearBuilt.
-cor(dataset$YearRemodAdd, dataset$YearBuilt
+cor(dataset$YearRemodAdd, dataset$YearBuilt)
 
 # From the plot we can see that YearRemodAdd has a very similar correlation with SalePrice compared with YearBuilt.
 # Remodellings were only recorded starting 1950.
@@ -901,6 +918,7 @@ dataset[train$Id, ] %>%
 # Most houses have identical YearBuilt and YearRemodAdd values, since there were no remodellings done.
 # For predictive purposes, this variable isn't very helpful.
 dataset <- subset(dataset, select = -YearRemodAdd)
+
 
 
 #####
@@ -932,6 +950,7 @@ grid.arrange(RoofStyle_boxplot, RoofStyle_scatterplot, nrow = 1)
 
 # The style of roof is not very predictive of sale price, but most expensive houses are either in the "Gable" or "Hip" category.
 
+
 #####
 # RoofMatl: Roof material
 ##### 
@@ -960,6 +979,7 @@ grid.arrange(RoofMatl_boxplot, RoofMatl_scatterplot, nrow = 1)
 
 # From the plots we can see that there are very few houses with roof materials differeing from the standard composite shingle.
 # Most categories are populated by very few houses and are widely spread.
+
 
 
 #####
@@ -991,6 +1011,8 @@ grid.arrange(Exterior1st_boxplot, Exterior1st_scatterplot, nrow = 1)
 # From the plots it becomes apparent that asbestos shingles and asphalt shingles are mostly used with cheaper houses.
 
 # Before we deal with the missing value, we take a look at Exterior2nd as well.
+
+
 
 #####
 # Exterior2nd: Exterior covering on house (if more than one material)
@@ -1033,6 +1055,8 @@ dataset %>% select(Exterior2nd) %>% group_by(Exterior2nd) %>% tally() # VinylSd 
 knn_model <- kNN(dataset, variable = c("Exterior1st", "Exterior2nd"), k = 5)
 dataset$Exterior1st[2152] <- knn_model[knn_model$Exterior1st_imp == TRUE, ]$Exterior1st
 dataset$Exterior2nd[2152] <- knn_model[knn_model$Exterior2nd_imp == TRUE, ]$Exterior2nd
+
+
 
 #####
 # MasVnrType: Masonry veneer type
@@ -1087,6 +1111,7 @@ MasVnrType_scatterplot <- dataset[train$Id, ] %>%
   ggtitle("Boxplot of MasVnrType vs. SalePrice after missing value imputation")
 
 grid.arrange(MasVnrType_boxplot, MasVnrType_scatterplot, nrow = 1)
+
 
 
 #####
@@ -1146,6 +1171,8 @@ ind2 <- dataset[which(dataset$MasVnrArea == 0 & dataset$MasVnrType != "None"), ]
 dataset$MasVnrArea[ind1] <- 0
 dataset$MasVnrType[ind2] <- "None"
 
+
+
 #####
 # ExterQual: Evaluates the quality of the material on the exterior 
 #####
@@ -1186,6 +1213,7 @@ dataset[train$Id, ] %>%
   theme(legend.position = "none") +
   ggtitle("Scatterplot of engineered ExterQual vs. SalePrice") +
   geom_smooth(method = "lm")
+
 
 
 #####
@@ -1234,6 +1262,7 @@ dataset[train$Id, ] %>%
   geom_smooth(method = "lm")
 
 
+
 #####
 # Foundation: Type of foundation
 #####
@@ -1262,6 +1291,7 @@ grid.arrange(Foundation_boxplot, Foundation_scatterplot, nrow = 1)
 
 # From the plots we can see that stone and wood Foundations are relatively rare. Poured concrete ("PConc") seems to
 # be the material of choice for houses with higher sale prices, while slab seems to be associated with lower values.
+
 
 
 #####
@@ -1313,6 +1343,7 @@ dataset %>%
   ggtitle("Boxplot of BsmtQual vs. GrLivArea")
 
 
+
 #####
 # BsmtCond: Evaluates the general condition of the basement
 #####
@@ -1352,6 +1383,7 @@ grid.arrange(BsmtCond_boxplot, BsmtCond_scatterplot, nrow = 1)
 # Basement condition seems to be a good indicator of sale price. Although there are only a few houses
 # with a really poor basement condition, all of these houses have exceptionally low sale prices.
 # Overall, a typical or good basement condition is important for a houses sale price.
+
 
 
 #####
@@ -1429,6 +1461,8 @@ grid.arrange(BsmtFinType1_boxplot, BsmtFinType1_scatterplot, nrow = 1)
 
 # Houses with unfinished or good quality living quarter type of finish come with higher sale prices.
 
+
+
 #####
 # BsmtFinType2: Rating of basement finished area (if multiple types)
 #####
@@ -1465,6 +1499,7 @@ grid.arrange(BsmtFinType2_boxplot, BsmtFinType2_scatterplot, nrow = 1)
 # Houses with unfinished type of finish come with higher sale prices.
 
 
+
 #####
 # Basement square feet variables
 #####
@@ -1497,6 +1532,8 @@ cor(dataset[train$Id, ]$BsmtUnfSF, dataset[train$Id, ]$SalePrice) # Relatively s
 
 # The individual basement area variables seem to be redundant, but we observed that having an unfinished basement
 # can be indiciative of a higher sale price earlier (e.g. relatively large correlation between BsmtUnfSF and SalePrice). We therefore leave these variables alone.
+
+
 
 #####
 # Bathroom variables
@@ -1584,6 +1621,7 @@ grid.arrange(Heating_boxplot, Heating_scatterplot, nrow = 1)
 # appears to be associated with lower sale price. Most categories are woefully underrepresented, however.
 
 
+
 #####
 # HeatingQC: Heating quality and condition
 #####
@@ -1645,6 +1683,7 @@ grid.arrange(CentralAir_boxplot, CentralAir_scatterplot, nrow = 1)
 # Clearly, having central air conditioning positively influences sale price.
 
 
+
 #####
 # Electrical: Electrical system
 #####
@@ -1694,6 +1733,8 @@ grid.arrange(Electrical_boxplot, Electrical_scatterplot, nrow = 1)
 # From the plots it becomes apparent that "SBrkr" is not only the most common,
 # but also the most valuable kind of "Electrical".
 
+
+
 #####
 # 1stFlrSF: First Floor square feet
 # 2ndFlrSF: Second floor square feet
@@ -1736,6 +1777,8 @@ dataset[train$Id, ] %>%
 
 # As to be expected, a larger above ground living area correlates strongly with sale price.
 
+
+
 #####
 # Bedroom: Bedrooms above grade (does NOT include basement bedrooms)
 #####
@@ -1757,6 +1800,7 @@ dataset[train$Id, ] %>%
 
 # While a larger number of bedrooms probably denotes larger and therefore more expensive houses, the absolute number of bedrooms is not necessarily
 # the strongest predictor of sale price.
+
 
 
 #####
@@ -1844,6 +1888,7 @@ dataset[train$Id, ] %>%
   geom_smooth(method = "lm")
 
 
+
 #####
 # TotRmsAbvGrd: Total rooms above grade (does not include bathrooms)
 #####
@@ -1908,6 +1953,7 @@ grid.arrange(Functional_boxplot, Functional_scatterplot, nrow = 1)
 # We plot "Functional" against "SalePrice" and observe that "Maj2" (major deductions 2) seems to influence "SalePrice" negatively. A few houses are "Sev" (severly damaged), but median "SalePrice" remaisn comparable in these cases. Most houses, also most expensive houses,have "Typ" (typical functionality) values.
 
 
+
 #####
 # Fireplaces: Number of fireplaces
 #####
@@ -1932,6 +1978,7 @@ dataset[train$Id, ] %>%
 # Fireplaces can be considered another measurement of house size. Having more fireplaces is possitively correalted with sale price.
 # It seems likely that having 1 or more fireplaces of high quality would be strong predictors of sale price.
 # To confirm this, we have to inspect FireplacesQu.
+
 
 
 #####
@@ -1972,6 +2019,7 @@ grid.arrange(FireplaceQu_boxplot, FireplaceQu_scatterplot, nrow = 1)
 # However, there are also many houses without any fireplaces that have larger sale prices than some of the houses with poor, fair, or typical quality fireplaces.
 
 
+
 #####
 # GarageType: Garage location
 ##### 
@@ -2008,6 +2056,7 @@ grid.arrange(GarageType_boxplot, GarageType_scatterplot, nrow = 1)
 
 # From the plots we can see that having no garage or just a carport can be predictive of a lower sale price.
 # There is a certain difference between detached and attached garages, too.
+
 
 
 #####
@@ -2048,6 +2097,7 @@ dataset %>%
 dataset <- subset(dataset, select = - GarageYrBlt)
 
 
+
 #####
 # GarageFinish: Interior finish of the garage
 #####
@@ -2082,6 +2132,7 @@ GarageFinish_scatterplot <- dataset[train$Id, ] %>%
 grid.arrange(GarageFinish_boxplot, GarageFinish_scatterplot, nrow = 1)
 
 # No or unfinished garages are predictive of lower sale price.
+
 
 
 #####
@@ -2129,6 +2180,7 @@ cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$GarageCars)
 dataset <- subset(dataset, select = -GarageArea)
 
 
+
 #####
 # GarageQual: Garage quality
 #####
@@ -2163,6 +2215,7 @@ GarageQual_scatterplot <- dataset[train$Id, ] %>%
 grid.arrange(GarageQual_boxplot, GarageQual_scatterplot, nrow = 1)
 
 # Garage quality is associated with higher sale price.
+
 
 
 #####
@@ -2234,6 +2287,7 @@ grid.arrange(PavedDrive_boxplot, PavedDrive_scatterplot, nrow = 1)
 
 # We will first look at all the porch-related variables in isolation.
 
+
 #####
 # WoodDeckSF: Wood deck area in square feet
 #####
@@ -2255,6 +2309,7 @@ dataset[train$Id, ] %>%
   ggtitle("Boxplot of WoodDeckSF vs. SalePrice")
 
 # WoodDeckSF positively correelates with SalePrice.
+
 
 #####
 # OpenPorchSF: Open porch area in square feet
@@ -2279,6 +2334,7 @@ dataset[train$Id, ] %>%
 
 # OpenPorchSF weakly positively correlates with SalePrice.
 
+
 #####
 # EnclosedPorch: Enclosed porch area in square feet
 #####
@@ -2302,6 +2358,7 @@ dataset[train$Id, ] %>%
 
 # EnclosedPorch weakly positively correlates with SalePrice.
 
+
 #####
 # X3SsnPorch: Enclosed porch area in square feet
 #####
@@ -2324,6 +2381,7 @@ dataset[train$Id, ] %>%
   ggtitle("Boxplot of X3SsnPorch vs. SalePrice")
 
 # X3SsnPorch weakly positively correlates with SalePrice.
+
 
 #####
 # ScreenPorch: Enclosed porch area in square feet
@@ -2374,12 +2432,16 @@ cor(dataset[train$Id, ]$SalePrice, dataset[train$Id, ]$TotalPorch)
 dataset <- subset(dataset, select = -c(OpenPorchSF, EnclosedPorch, X3SsnPorch, ScreenPorch, WoodDeckSF))
 
 
+
 #####
 # PoolArea: Pool area in square feet
 #####
 
 # There are no missing values in PoolArea
 summary(dataset$PoolArea)
+
+# We convert "PoolArea" to numerical.
+dataset$PoolArea <- as.numeric(dataset$PoolArea)
 
 # Scatterplot of PoolArea vs. SalePrice where PoolArea > 0.
 dataset[train$Id, ] %>%
@@ -2392,7 +2454,7 @@ dataset[train$Id, ] %>%
   theme(legend.position = "none") +
   ggtitle("Boxplot of PoolArea vs. SalePrice")
 
-# PoolArea seems to have little predictive power in terms of sasle price. Also, only a few houses actually have a pool.
+# PoolArea seems to have little predictive power in terms of sale price. Also, only a few houses actually have a pool.
 # Is having a pool of any size in general more important? We will explore PoolQC.
 
 
@@ -2418,6 +2480,7 @@ dataset[train$Id, ] %>%
   theme_bw() +
   theme(legend.position = "none") +
   ggtitle("Scatterplot of PoolQC vs. SalePrice")
+
 
 
 #####
@@ -2454,6 +2517,8 @@ Fence_scatterplot <- dataset[train$Id, ] %>%
 grid.arrange(Fence_boxplot, Fence_scatterplot, nrow = 1)
 
 # Fence is not giving much information at all. Fences seem to have little importance in terms of sale price.
+
+
 
 #####
 # MiscFeature: Miscellaneous feature not covered in other categories
@@ -2492,12 +2557,16 @@ grid.arrange(MiscFeature_boxplot, MiscFeature_scatterplot, nrow = 1)
 # useful.
 
 
+
 #####
 # MiscVal: $Value of miscellaneous feature
 #####
 
 # There are no missing values in MiscVal
 summary(dataset$MiscVal)
+
+# We convert "MiscVal"" to numerical.
+dataset$MiscVal <- as.numeric(dataset$MiscVal)
 
 # Scatterplot of MiscVal vs. SalePrice
 dataset[train$Id, ] %>%
@@ -2512,13 +2581,17 @@ dataset[train$Id, ] %>%
 
 
 
-
 #####
 # MoSold: Month Sold (MM)
 # YrSold: Year Sold (YYYY)
 #####
 
+# We convert "YrSold" and "MoSold" to numerical.
+dataset$YrSold <- as.numeric(dataset$YrSold)
+dataset$MoSold <- as.numeric(dataset$MoSold)
+
 # We plot MonthSold and YearSold - do these features influence SalePrice?
+
 
 # We plot the amount of sold houses per month. Most houses are sold during the Spring/Summer months of the year.
 dataset %>%
@@ -2605,10 +2678,6 @@ dataset$SaleType[which(is.na(dataset$SaleType))] <- knn_model[knn_model$SaleType
 
 
 
-
-
-
-
 #####
 # SaleCondition: Condition of sale
 #####
@@ -2638,6 +2707,7 @@ grid.arrange(SaleCondition_boxplot, SaleCondition_scatterplot, nrow = 1)
 
 # From the plots we can see that partial, as a measure of "newness" seems to indicate higher sale price.
 # Most houses are sold under normal conditions.
+
 
 
 ###
@@ -2738,7 +2808,7 @@ model_2_multi_lm_pred <- predict(model_2_multi_lm, newdata = test_set)
 model_2_multi_lm_RMSE <- RMSE(model_2_multi_lm_pred, test_set$SalePrice) 
 
 # Record RMSE of the model.
-model_rmses <- data_frame(Model = "Multi_lm_several", RMSE = model_2_multi_lm_RMSE)
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Multi_lm_several", RMSE = model_2_multi_lm_RMSE))
 
 # Print RMSEs.
 model_rmses %>% knitr::kable()
@@ -2757,7 +2827,7 @@ model_3_multi_lm_pred <- predict(model_3_multi_lm, newdata = test_set)
 model_3_multi_lm_RMSE <- RMSE(model_3_multi_lm_pred, test_set$SalePrice) 
 
 # Record RMSE of the model.
-model_rmses <- data_frame(Model = "Multi_lm_all", RMSE = model_3_multi_lm_RMSE)
+model_rmses <- bind_rows(model_rmses, data_frame(Model = "Multi_lm_all", RMSE = model_3_multi_lm_RMSE))
 
 # Print RMSEs.
 model_rmses %>% knitr::kable()
@@ -2772,26 +2842,36 @@ model_rmses %>% knitr::kable()
 
 
 # Gradient Boosting Machine - XGBOOST
+# We will utilize the XGBoost algorithm to build models to predict "SalePrice". XGBoost requires the dataset to be entirely in numerical format, which can be achieved via so-called "one-hot-encoding" of the variables. One way to do this is to use the "vtreat" package and its function "designTreatmentsZ", which devises a "treatment plan" to "one-hot-encode" all relevant variables at once. This "treatment plan" is then used via the "prepare" function to do the "one-hot-encoding" on the `train_set` and on the `test_set`. We thus generate `train_set_treated` and `test_set_treated` for use with XGBoost.
 
-# We select all relevant predictors
+# We select all relevant predictors.
 variables <- names(subset(train_set, select = -c(Id, SalePrice)))
 
-# The vtreat function designTreatmentsZ helps encode all variables numerically via one-hot-encoding
-treatment_plan <- designTreatmentsZ(train_set, variables) # Devise a treatment plan for the variables
-(newvars <- treatment_plan %>%
-    use_series(scoreFrame) %>%  # use_series() works like a $, but within pipes, so we can access scoreFrame      
-    filter(code %in% c("clean", "lev")) %>%  # We select only the rows we care about: catP is a "prevalence fact" and tells whether the original level was rare or common and not really useful in the model
-    use_series(varName))           # We get the varName column
+# The vtreat function "designTreatmentsZ" helps encode all variables numerically
+# via one-hot-encoding.
+
+# Devise a "treatment plan" for the variables selected above.
+# use_series() works like a $, but within pipes, so we can access scoreFrame.
+# We select only the rows we care about: catP is a "prevalence fact" and tells
+# whether the original level was rare or common and not really useful in the model.
+# We get the varName column.
+treatment_plan <- designTreatmentsZ(train_set, variables, verbose = FALSE) 
+
+newvars <- treatment_plan %>%
+  use_series(scoreFrame) %>%        
+  filter(code %in% c("clean", "lev")) %>%  
+  use_series(varName)         
 
 # The prepare() function prepares our data subsets according to the treatment plan
-# we devised above and encodes all relevant variables "newvars" numerically
+# we devised above and encodes all relevant variables "newvars" numerically.
+
+# Treatment of train_set.
 train_set_treated <- vtreat::prepare(treatment_plan, train_set,  varRestriction = newvars)
+
+# Treatment of test_set.
 test_set_treated <- vtreat::prepare(treatment_plan, test_set,  varRestriction = newvars)
 
-# We can now see the numerical encoding of all variables thanks to treatment and preparation above
-str(train_set_treated)
-str(test_set_treated)
-
+# Next we will use the `xgb.cv()` function to determine the total number of rounds `nrounds` that improve RMSE until only the training RMSE reduces further, while the cross-validated RMSE already reached a minimum. While the training RMSE may continue to decrease on more and more rounds of boosting iterations ("overfitting"), the test RMSE usually does not after some point. After running `xgb.cv()` we can access its event log to find the optimal number of iterations. As the treated `train_set` no longer contains the outcome variable "SalePrice", we have to use the untreated `train_set` to provide it as a `label`. For our baseline XGBoost model, we will use mostly default parameters.
 
 # xgb.cv only takes a matrix of the treated, all-numerical input data.
 cv <- xgb.cv(data = as.matrix(train_set_treated),  
@@ -2867,7 +2947,7 @@ tuneGrid <- expand.grid(
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
   method = "repeatedcv", 
-  number = 3,
+  number = 5,
   repeats = 3,
   verboseIter = FALSE,
   allowParallel = TRUE
@@ -2886,25 +2966,23 @@ xgb_1st_tuning <- caret::train(
   preProcess = c("nzv", "center", "scale")
 )
 
-# Paralellization. Insert serial backend, otherwise error in repetitive tasks.
-stopCluster(cls)
-registerDoSEQ()
-
 # Print the best tuning parameters.
 xgb_1st_tuning$bestTune
 
 # Visualization of the 1st tuning round.
-ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.13, 0.15))
+ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
 
-vip(xgb_1st_tuning, num_features = 10) # We take a look at the most important features
+# Visualization of the most important features.
+vip(xgb_1st_tuning, num_features = 10) + ggtitle("Variable importance")
 
 
-# We predict on the test_set and record the "out-of-bag" RMSE
+# We predict on the test_set and record the "out-of-bag" RMSE.
 xgb_1st_tuning_pred <- predict(xgb_1st_tuning, test_set_treated)
 
 xgb_1st_tuning_rmse <- RMSE(xgb_1st_tuning_pred, test_set$SalePrice)
 
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_5_xgb_1st_tune", RMSE = xgb_1st_tuning_rmse))
+model_rmses <- bind_rows(model_rmses,
+                         data_frame(Model = "caret_xgbTree_1st_tune", RMSE = xgb_1st_tuning_rmse))
 
 model_rmses %>% knitr::kable()
 
@@ -2927,7 +3005,7 @@ tuneGrid <- expand.grid(
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
   method = "repeatedcv", 
-  number = 3,
+  number = 5,
   repeats = 3,
   verboseIter = FALSE,
   allowParallel = TRUE
@@ -2946,26 +3024,23 @@ xgb_2nd_tuning <- caret::train(
   preProcess = c("nzv", "center", "scale")
 )
 
-# Paralellization. Insert serial backend, otherwise error in repetitive tasks.
-stopCluster(cls)
-registerDoSEQ()
-
 # Print the best tuning parameters.
 xgb_2nd_tuning$bestTune
 
 # Visualization of the 2nd tuning round.
-ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.13, 0.15))
+ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
 
 
 # We can select the best tuning values from the model like this
 xgb_2nd_tuning$bestTune
 
-# We predict on the test_set and record the "out-of-bag" RMSE
+# We predict on the test_set and record the "out-of-bag" RMSE.
 xgb_2nd_tuning_pred <- predict(xgb_2nd_tuning, test_set_treated)
 
 xgb_2nd_tuning_rmse <- RMSE(xgb_2nd_tuning_pred, test_set$SalePrice)
 
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_5_xgb_2nd_tune", RMSE = xgb_2nd_tuning_rmse))
+model_rmses <- bind_rows(model_rmses,
+                         data_frame(Model = "caret_xgbTree_2nd_tune", RMSE = xgb_2nd_tuning_rmse))
 
 model_rmses %>% knitr::kable()
 
@@ -2974,7 +3049,7 @@ model_rmses %>% knitr::kable()
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 2000, 50),
+  nrounds = seq(150, 2500, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = c(0.025, 0.05, 0.075, 0.1),
   gamma = 0,
@@ -2986,7 +3061,7 @@ tuneGrid <- expand.grid(
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
   method = "repeatedcv", 
-  number = 3,
+  number = 5,
   repeats = 3,
   verboseIter = FALSE,
   allowParallel = TRUE
@@ -3009,19 +3084,20 @@ xgb_3rd_tuning <- caret::train(
 xgb_3rd_tuning$bestTune
 
 # Visualization of the 3rd tuning round.
-ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.13, 0.15))
+ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
 
 
 
 # We can select the best tuning values from the model like this
 xgb_3rd_tuning$bestTune
 
-# We predict on the test_set and record the "out-of-bag" RMSE
+# We predict on the test_set and record the "out-of-bag" RMSE.
 xgb_3rd_tuning_pred <- predict(xgb_3rd_tuning, test_set_treated)
 
 xgb_3rd_tuning_rmse <- RMSE(xgb_3rd_tuning_pred, test_set$SalePrice)
 
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Model_6_xgb_3rd_tune", RMSE = xgb_3rd_tuning_rmse))
+model_rmses <- bind_rows(model_rmses,
+                         data_frame(Model = "caret_xgbTree_3rd_tune", RMSE = xgb_3rd_tuning_rmse))
 
 model_rmses %>% knitr::kable()
 
@@ -3033,23 +3109,22 @@ model_rmses %>% knitr::kable()
 # We select all relevant predictors
 variables <- names(subset(train, select = -c(Id, SalePrice)))
 
-# The vtreat function designTreatmentsZ helps encode all variables numerically via one-hot-encoding
-treatment_plan <- designTreatmentsZ(train, variables) # Devise a treatment plan for the variables
-(newvars <- treatment_plan %>%
-    use_series(scoreFrame) %>%  # use_series() works like a $, but within pipes, so we can access scoreFrame      
-    filter(code %in% c("clean", "lev")) %>%  # We select only the rows we care about: catP is a "prevalence fact" and tells whether the original level was rare or common and not really useful in the model
-    use_series(varName))           # We get the varName column
+# Devise a "treatment plan"" for the variables.
+treatment_plan <- designTreatmentsZ(train, variables, verbose = FALSE) 
+
+newvars <- treatment_plan %>%
+  use_series(scoreFrame) %>%      
+  filter(code %in% c("clean", "lev")) %>%  
+  use_series(varName)
 
 # The prepare() function prepares our data subsets according to the treatment plan
-# we devised above and encodes all relevant variables "newvars" numerically
+# we devised above and encodes all relevant variables "newvars" numerically.
 train_treated <- vtreat::prepare(treatment_plan, train,  varRestriction = newvars)
 test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
 
-
-
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 2000, 50),
+  nrounds = seq(150, 2500, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = xgb_3rd_tuning$bestTune$eta,
   gamma = 0,
@@ -3079,13 +3154,10 @@ xgb_final_model <- caret::train(
 )
 
 # Visualization of the final fitted model.
-ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.125, 0.140))
+ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.120, 0.140))
 
 # Lowest RMSE obtained in cross-validation.
 min(xgb_final_model$results$RMSE)
-
-# We can select the final tuning values from the model like this
-xgb_final_model$bestTune
 
 # Predicting on test. We take the exp() as we log-transformed "SalePrice".
 xgb_final_model_pred <- exp(predict(xgb_final_model, as.matrix(test_treated)))
