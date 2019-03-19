@@ -2935,12 +2935,12 @@ model_rmses %>% knitr::kable()
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 1000, 50),
-  max_depth = c(2, 3, 4, 5, 6),
+  nrounds = seq(150, 2000, 50),
+  max_depth = c(2, 4, 6, 8),
   eta = 0.05,
   gamma = 0,
   colsample_bytree = 0.8,
-  min_child_weight = c(2, 4, 6),
+  min_child_weight = c(2, 4, 6, 8),
   subsample = 0.8
 )
 
@@ -2993,13 +2993,13 @@ model_rmses %>% knitr::kable()
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 1000, 50),
+  nrounds = seq(150, 2000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = 0.05,
   gamma = 0,
-  colsample_bytree = seq(0.4, 0.9, 0.1),
+  colsample_bytree = seq(0.3, 0.8, 0.1),
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
-  subsample = seq(0.4, 0.9, 0.1)
+  subsample = seq(0.5, 1, 0.1)
 )
 
 # We define a custom train control for the caret train() function.
@@ -3049,7 +3049,7 @@ model_rmses %>% knitr::kable()
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 2500, 50),
+  nrounds = seq(150, 3000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = c(0.025, 0.05, 0.075, 0.1),
   gamma = 0,
@@ -3086,10 +3086,6 @@ xgb_3rd_tuning$bestTune
 # Visualization of the 3rd tuning round.
 ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
 
-
-
-# We can select the best tuning values from the model like this
-xgb_3rd_tuning$bestTune
 
 # We predict on the test_set and record the "out-of-bag" RMSE.
 xgb_3rd_tuning_pred <- predict(xgb_3rd_tuning, test_set_treated)
