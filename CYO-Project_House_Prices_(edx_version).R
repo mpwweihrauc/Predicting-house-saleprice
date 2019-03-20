@@ -2937,11 +2937,11 @@ model_rmses %>% knitr::kable()
 tuneGrid <- expand.grid(
   nrounds = seq(150, 2000, 50),
   max_depth = c(2, 4, 6, 8),
-  eta = 0.05,
+  eta = 0.025,
   gamma = 0,
-  colsample_bytree = 0.8,
+  colsample_bytree = 1,
   min_child_weight = c(2, 4, 6, 8),
-  subsample = 0.8
+  subsample = 1
 )
 
 # We define a custom train control for the caret train() function.
@@ -2970,7 +2970,7 @@ xgb_1st_tuning <- caret::train(
 xgb_1st_tuning$bestTune
 
 # Visualization of the 1st tuning round.
-ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
+ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
 
 # Visualization of the most important features.
 vip(xgb_1st_tuning, num_features = 10) + ggtitle("Variable importance")
@@ -2995,7 +2995,7 @@ model_rmses %>% knitr::kable()
 tuneGrid <- expand.grid(
   nrounds = seq(150, 2000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = 0.05,
+  eta = 0.025,
   gamma = 0,
   colsample_bytree = seq(0.3, 0.8, 0.1),
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
@@ -3028,30 +3028,16 @@ xgb_2nd_tuning <- caret::train(
 xgb_2nd_tuning$bestTune
 
 # Visualization of the 2nd tuning round.
-ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
-
-
-# We can select the best tuning values from the model like this
-xgb_2nd_tuning$bestTune
-
-# We predict on the test_set and record the "out-of-bag" RMSE.
-xgb_2nd_tuning_pred <- predict(xgb_2nd_tuning, test_set_treated)
-
-xgb_2nd_tuning_rmse <- RMSE(xgb_2nd_tuning_pred, test_set$SalePrice)
-
-model_rmses <- bind_rows(model_rmses,
-                         data_frame(Model = "caret_xgbTree_2nd_tune", RMSE = xgb_2nd_tuning_rmse))
-
-model_rmses %>% knitr::kable()
+ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
 
 
 ### 3rd tune ###
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 3000, 50),
+  nrounds = seq(150, 4000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = c(0.025, 0.05, 0.075, 0.1),
+  eta = c(0.01, 0.025, 0.05, 0.075, 0.1),
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
@@ -3084,7 +3070,7 @@ xgb_3rd_tuning <- caret::train(
 xgb_3rd_tuning$bestTune
 
 # Visualization of the 3rd tuning round.
-ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.1275, 0.1475))
+ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
 
 
 # We predict on the test_set and record the "out-of-bag" RMSE.
@@ -3120,7 +3106,7 @@ test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
 
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 2500, 50),
+  nrounds = seq(150, 4000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = xgb_3rd_tuning$bestTune$eta,
   gamma = 0,
@@ -3150,7 +3136,7 @@ xgb_final_model <- caret::train(
 )
 
 # Visualization of the final fitted model.
-ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.120, 0.140))
+ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.1225, 0.14))
 
 # Lowest RMSE obtained in cross-validation.
 min(xgb_final_model$results$RMSE)

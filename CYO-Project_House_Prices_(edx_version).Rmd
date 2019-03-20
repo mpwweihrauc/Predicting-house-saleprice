@@ -24,7 +24,7 @@ The challenge of this dataset thus comes from the large amout of variables to ex
 I therefore chose to conduct a thorough exploratory data analysis and to systematically analyze each and every explanatory variable ("feature") of the dataset. After much exploration and data wrangling I then started to develop my machine learning algoritm with the help of the `caret` package. After having established a few baseline models, I continued to tune the various hyperparameters of my algorithm, which I accompanied with visualizations. My project report culminates with my final tuned algorithm predicting the house prices of the `test` subset, writing a submission file for score submission at *Kaggle* and reporting the final results obtained. I end with a discussion and conclusion of my experience throughout this self-chosen project.
 
 
-## Dataset Preparation
+**Dataset Preparation**
 The house prices dataset can be found on [*Kaggle*](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data) or, alternatively, in my [**Github repository**](https://github.com/mpwweihrauc/ML_House_Prices.git). We will work with the `test.csv` and `train.csv` files. There is also a `data_description.txt` with descriptions about all the different parameters in the dataset. The desired outcome variable "SalePrice" is not present in `test`. 
 
 ```{r, echo = FALSE, warning = FALSE, message = FALSE}
@@ -60,6 +60,8 @@ test <- read.csv("test.csv", stringsAsFactors = TRUE)
 knitr::opts_chunk$set(fig.align = "center", fig.dim = c(7, 4), collapse = TRUE)
 ```
 
+\pagebreak
+
 # Exploratory data analysis and dataset manipulations
 We begin by inspecting some basic properties of the dataset. The desired outcome column is named "SalePrice" and denotes a houses' sale price in dollars.
 In the train subset we are dealing with 1460 different houses and 81 different features of them (including their Id), such as the year they were built in or their overall condition. We also notice that several features contain missing values.
@@ -80,7 +82,7 @@ test$SalePrice <- 0 # Temporarily add a "SalePrice" column with zeros to `test`.
 dataset <- rbind(train, test) # Merge `train` and `test` into one `dataset`.
 ```
 
-
+\pagebreak
 
 ## Systematic analysis and manipulation of all dataset features
 
@@ -3536,8 +3538,6 @@ We will evaluate different values for the hyperparameters of the "xgbTree" algor
 
 After training and fitting the model, we will visually inspect which set of hyperparameters achieved the lowest RMSE value as determined by cross-validation. Afterwards we will predict against our `test_set` ("hold-out-set") and determine "out-of-bag" RMSE.
 
-**Please note that model fitting is utilizing parallelization, which might require more RAM and cause increased CPU heat production during modelling.**
-
 
 ### First round of hyperparameter tuning: max_depth and min_child_weight
 
@@ -3546,11 +3546,11 @@ After training and fitting the model, we will visually inspect which set of hype
 tuneGrid <- expand.grid(
   nrounds = seq(150, 2000, 50),
   max_depth = c(2, 4, 6, 8),
-  eta = 0.05,
+  eta = 0.025,
   gamma = 0,
-  colsample_bytree = 0.8,
+  colsample_bytree = 1,
   min_child_weight = c(2, 4, 6, 8),
-  subsample = 0.8
+  subsample = 1
 )
 
 # We define a custom train control for the caret train() function.
@@ -3617,7 +3617,7 @@ After we determined good values for `max_depth` and `min_child_weight` in the fi
 tuneGrid <- expand.grid(
   nrounds = seq(150, 2000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = 0.05,
+  eta = 0.025,
   gamma = 0,
   colsample_bytree = seq(0.3, 0.8, 0.1),
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
@@ -3674,9 +3674,9 @@ In the third and last round of hyperparameter tuning we will determine the optim
 ```{r, warning = FALSE, message = FALSE}
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 3000, 50),
+  nrounds = seq(150, 4000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = c(0.025, 0.05, 0.075, 0.1),
+  eta = c(0.01, 0.025, 0.05, 0.075, 0.1),
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
@@ -3731,7 +3731,7 @@ model_rmses %>% knitr::kable()
 
 As a final step we fit the model with the above determined parameters on the entire training subset `train`. Accordingly, `train` has to be prepared via "one-hot-encoding". We can then fit the final "xgbTree" model with the hyperparameters from the final tuning round.
 
-```{r}
+```{r, echo = FALSE}
 # We select all relevant predictors
 variables <- names(subset(train, select = -c(Id, SalePrice)))
 
@@ -3747,10 +3747,11 @@ newvars <- treatment_plan %>%
 # we devised above and encodes all relevant variables "newvars" numerically.
 train_treated <- vtreat::prepare(treatment_plan, train,  varRestriction = newvars)
 test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
-
+```
+```{r}
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 2500, 50),
+  nrounds = seq(150, 4000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = xgb_3rd_tuning$bestTune$eta,
   gamma = 0,
@@ -3790,9 +3791,9 @@ ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.1225, 0.14))
 min(xgb_final_model$results$RMSE)
 ```
 
-Finally, we can predict on `test` and prepare the submission file for entry into the **Kaggle** competition, where the submission is evaluated and scored on a public leaderboard. At the time of this writing, the generated submission file scored an RMSE of 0.12304 and achieved a rank of 1241 on the public leaderboard of the respective competition. The public leaderboard is calculated with approximately 50% of the test data and the final results will be based on the other 50%, so final scores are subject to change. Curiously, the actual public score at *Kaggle* is very close to the RMSE determined by cross-validation during the final model fitting above (RMSE of `r min(xgb_final_model$results$RMSE)`).
+Finally, we can predict on `test` and prepare the submission file for entry into the *Kaggle* competition, where the submission is evaluated and scored on a public leaderboard. At the time of this writing, the generated submission file scored an RMSE of 0.12304 and achieved a rank of 1241 on the public leaderboard of the respective competition. The public leaderboard is calculated with approximately 50% of the test data and the final results will be based on the other 50%, so final scores are subject to change. Curiously, the actual public score at *Kaggle* is very close to the RMSE determined by cross-validation during the final model fitting above (RMSE of `r min(xgb_final_model$results$RMSE)`).
 
-```{r}
+```{r, echo = FALSE}
 # Predicting on test. We take the exp() as we log-transformed "SalePrice".
 xgb_final_model_pred <- exp(predict(xgb_final_model, as.matrix(test_treated)))
 
@@ -3811,9 +3812,9 @@ write.table(my_submission, file = "submission.csv",
 
 For this "Choose your own" capstone project I've conducted exploratory data analysis, wrangled the data in various ways, and built a machine learning algorithm with the `caret` package to predict house prices in a dataset from [*Kaggle*](https://www.kaggle.com/c/house-prices-advanced-regression-techniques). The dataset came with a relatively large number of variables containg all kinds of information about houses. I've shown that certain variables have a much larger influence on a houses' sale price than others and how some variables could potentially do more harm than good if, for example, they have many categories with very few entries. I've imputed missing values via kNN-based predictions wherever feasible and noted that mostly the variables' mode was predicted. Most missing values were generated by erroneous variable encoding in the dataset itself, which was easily fixed by simple replacement with appropriate terms. I've conducted some slight feature engineering, for example by combining several individual variables into one.
 
-I developed my algorithm in several steps by tuning different sets of hyperparameters on a training subset and then validating its performance on a test subset of data. The thusly determined hyperparameters were then used in a final model fitting process on the entire `train` dataset. The predictions of the resulting model on `test` were then used to generate a submission file, which was submitted to *Kaggle* and achieved an public leaderboard rank of 1241 with an RMSE of 0.12304 at the time of writing (some of the best submitted models score RMSEs of around 0.105). I've also compared the performance of my developed algorithm with the performance of a simple multivariate linear regression, which performed quite well considering its minimal computational cost in comparison.
+I developed my algorithm in several steps by tuning different sets of hyperparameters on a training subset and then validating its performance on a test subset of data. The thusly determined hyperparameters were then used in a final model fitting process on the entire `train` dataset. The predictions of the resulting model on `test` were then used to generate a submission file, which was submitted to *Kaggle* and achieved an public leaderboard rank of 1241 with an RMSE of 0.12304 at the time of writing (some of the best submitted models score RMSEs of around 0.105). I've also compared the performance of my developed algorithm with the performance of a simple multivariate linear regression, which performed quite well considering its minimal computational cost in comparison. The exact results may vary between different executions of the code, as the cross-validation folds differ at each run.
 
-Further improvements in model performance could be achieved by employing an ensemble of well-trained machine learning algorithms ("stacked regressions"). However, the goal of my project was not to score the lowest possible RMSE, but to practice data exploration, wrangling and building a relatively simple and interpretable algorithm. Due to the sheer number of features, I ended up mostly not going into greater depth in my data exploration. By systematically exploring each and every feature of the dataset, I acquired a certain intuition about their possible contribution to the outcome variable "SalePrice". It also helped in dealing with missing values and finding opportunities for some slight feature engineering. Optimally, I would have tested the influence on model performance of each and every modification I have applied to the dataset to test and see whether it was actually beneficial. However, this would have required very frequent re-running of the modelling process and probably would lead to a large increase in the size of the report. I ended up completely re-doing the entire data exploration part three times and ultimately decided not to test the influence of my dataset modifications in isolation. I also spent large amounts of time selecting hyperparameters for my algorithm and have probably re-run every part over a hundred times (throughout, I was able to iteratively improve my algorithms' score on *Kaggle*), even though the improvements in terms of RMSE were relatively minor. Through this I learned that simply "turning the big knobs" (as in, `nrounds`, `max_depth`, and `eta` for "xgbTree" in `caret`) already leads to decent performance improvements. 
+Further improvements in model performance could be achieved by further feature engineering and by employing an ensemble of well-trained machine learning algorithms ("stacked regressions"). However, the goal of my project was not to score the lowest possible RMSE, but to practice data exploration, wrangling and building a relatively simple and interpretable algorithm. Due to the sheer number of features, I ended up mostly not going into greater depth in my data exploration. By systematically exploring each and every feature of the dataset, I acquired a certain intuition about their possible contribution to the outcome variable "SalePrice". It also helped in dealing with missing values and finding opportunities for some slight feature engineering. Optimally, I would have tested the influence on model performance of each and every modification I have applied to the dataset to test and see whether it was actually beneficial. However, this would have required very frequent re-running of the modelling process and probably would lead to a large increase in the size of the report. I ended up completely re-doing the entire data exploration part three times and ultimately decided not to test the influence of my dataset modifications in isolation. I also spent large amounts of time selecting hyperparameters for my algorithm and have probably re-run every part over a hundred times (throughout, I was able to iteratively improve my algorithms' score on *Kaggle*), even though the improvements in terms of RMSE were relatively minor. Through this I learned that simply "turning the big knobs" (as in, `nrounds`, `max_depth`, and `eta` for "xgbTree" in `caret`) already leads to decent performance improvements. 
 
 
 
