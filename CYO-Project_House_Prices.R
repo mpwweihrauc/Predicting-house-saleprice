@@ -3028,14 +3028,14 @@ xgb_2nd_tuning <- caret::train(
 xgb_2nd_tuning$bestTune
 
 # Visualization of the 2nd tuning round.
-ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
+ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.125, 0.14))
 
 
 ### 3rd tune ###
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 4000, 50),
+  nrounds = seq(150, 8000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = c(0.01, 0.025, 0.05, 0.075, 0.1),
   gamma = 0,
@@ -3106,7 +3106,7 @@ test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
 
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 4000, 50),
+  nrounds = seq(150, 8000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = xgb_3rd_tuning$bestTune$eta,
   gamma = 0,
