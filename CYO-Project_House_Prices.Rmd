@@ -3534,7 +3534,7 @@ The RMSE has worsened compared to the simple linear regression approach. But can
 
 ## Hyperparameter tuning of the XGBoost algorithm "xgbTree" with caret
 
-We will evaluate different values for the hyperparameters of the "xgbTree" algorithm in the `caret` package. As expansive grid searches become computationally very expensive the more parameters are evaluated at the same time (easily into the thousands of models), we will instead evaluate no more than 2 parameters per tuning round and try to visually inspect their influence on model performance. In the first round of tunings, we will determine `max_depth`, the maximal depth of trees to use. Larger trees allow faster learning, but make the model more and more complex and prone to overfitting. The increased model complexity means that the model learns variable relations that might be very specific to the training data and not generalize well to new data. In addition, we will examine different values of `min_child_weight`, which defines the minimum sum of weights of all observations required in a child. Higher values here will counteract overfitting by preventing the model from learning variable relations that might be very specific to the particular sample which was selected for a particular tree. Large values of `min_child_weight` might lead to underfitting the training data. We will select some fairly standard values for the other hyperparameters to avoid exploding the number of models we will train in this first tuning step. We will use 3-times repeated 5-fold cross-validation. In addition, we make use of the `caret` `preProcess` option to remove near-zero variance predictors and to center and scale our data prior to model fitting.
+We will evaluate different values for the hyperparameters of the "xgbTree" algorithm in the `caret` package. As expansive grid searches become computationally very expensive the more parameters are evaluated at the same time (easily into the thousands of models), we will instead evaluate no more than 2 parameters per tuning round and try to visually inspect their influence on model performance. In the first round of tunings, we will determine `max_depth`, the maximal depth of trees to use. Larger trees allow faster learning, but make the model more and more complex and prone to overfitting. The increased model complexity means that the model learns variable relations that might be very specific to the training data and not generalize well to new data. In addition, we will examine different values of `min_child_weight`, which defines the minimum sum of weights of all observations required in a child. Higher values here will counteract overfitting by preventing the model from learning variable relations that might be very specific to the particular sample which was selected for a particular tree. Large values of `min_child_weight` might lead to underfitting the training data. We will select some fairly standard values for the other hyperparameters to avoid exploding the number of models we will train in this first tuning step. We will use 10-fold cross-validation. In addition, we make use of the `caret::preProcess` option to remove near-zero variance predictors and to center and scale our data prior to model fitting. Please note that the range of selected hyperparameters has been reduced empirically to reduce computational time as much as possible. Additionally, the learning rate `eta` has been set at a realtively low value of 0.025 to get a quite fine-grained step size.
 
 After training and fitting the model, we will visually inspect which set of hyperparameters achieved the lowest RMSE value as determined by cross-validation. Afterwards we will predict against our `test_set` ("hold-out-set") and determine "out-of-bag" RMSE.
 
@@ -3544,20 +3544,19 @@ After training and fitting the model, we will visually inspect which set of hype
 ```{r, warning = FALSE, message = FALSE}
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 1500, 50),
-  max_depth = c(2, 3, 4, 5, 6, 7),
-  eta = 0.05,
+  nrounds = seq(200, 2000, 50),
+  max_depth = c(2, 3, 4, 5),
+  eta = 0.025,
   gamma = 0,
-  colsample_bytree = 1,
-  min_child_weight = c(1, 2, 3, 4, 5, 6),
-  subsample = 1
+  colsample_bytree = 0.8,
+  min_child_weight = c(2, 3, 4, 5),
+  subsample = 0.8
 )
 
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
-  method = "repeatedcv", 
-  number = 5,
-  repeats = 3,
+  method = "cv", 
+  number = 10,
   verboseIter = FALSE,
   allowParallel = TRUE
 )
@@ -3582,7 +3581,7 @@ xgb_1st_tuning$bestTune
 ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
 ```
 
-From the tuning plots and the selected best parameters we can see that relatively shallow trees of `max_depth` `r xgb_1st_tuning$bestTune$max_depth` were chosen, along with a moderate `min_child_weight` of `r xgb_1st_tuning$bestTune$min_child_weight`. After some further tuning of other hyperparameters, we will see whether a slower learning rate `eta` would improve things.
+From the tuning plots and the selected best parameters we can see that trees of `max_depth` `r xgb_1st_tuning$bestTune$max_depth` were chosen, along with a moderate `min_child_weight` of `r xgb_1st_tuning$bestTune$min_child_weight`.
 
 We can also visualize which variables were most important in the modelling process. Unsurprisingly, "GrLivArea" and "TotalBsmtSF" as measures of living space are extremely important in determining "SalePrice". "OverallQual" is the most important variable. "GarageCars" and "TotalBaths" can also be viewed as measurements of house size and living space. The "YearBuilt" is also very important, as is the "KitchenQual" and "OverallCond". 
 
@@ -3615,20 +3614,19 @@ After we determined good values for `max_depth` and `min_child_weight` in the fi
 ```{r, warning = FALSE, message = FALSE}
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 1500, 50),
+  nrounds = seq(200, 2000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = 0.05,
+  eta = 0.025,
   gamma = 0,
-  colsample_bytree = seq(0.5, 1, 0.1),
+  colsample_bytree = seq(0.6, 0.9, 0.1),
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
-  subsample = seq(0.5, 1, 0.1)
+  subsample = seq(0.6, 0.9, 0.1)
 )
 
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
-  method = "repeatedcv", 
-  number = 5,
-  repeats = 3,
+  method = "cv", 
+  number = 10,
   verboseIter = FALSE,
   allowParallel = TRUE
 )
@@ -3650,10 +3648,10 @@ xgb_2nd_tuning <- caret::train(
 xgb_2nd_tuning$bestTune
 
 # Visualization of the 2nd tuning round.
-ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
+ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.12, 0.14))
 ```
 
-We can now predict on `test_set` and record "out-of-bag" RMSE. We note a small improvement over the first tuning round.
+We can now predict on `test_set` and record "out-of-bag" RMSE. We note a small decrement over the first tuning round.
 
 ```{r}
 # We predict on the test_set and record the "out-of-bag" RMSE.
@@ -3669,14 +3667,14 @@ model_rmses %>% knitr::kable()
 
 ### Third round of hyperparameter tuning: eta and nrounds
 
-In the third and last round of hyperparameter tuning we will determine the optimal learning rate `eta` and the optimal number of boosting iterations `nrounds`. The slower the learning rate, the more "fine-grained" the fitting process will be. The algorithm learns in smaller steps, but can therefore find finer optima. `eta` achieves this by shrinking the determined variable weights afer each step. It is therefore also called "step size shrinkage". By shrinking feature weights each step, the algorithm becomes more conservative. The plot of the final model clearly shows that a lower learning rate `eta` can reach a lower RMSE value with increasing iterations, as is the case for `eta` of 0.025. At an `eta` of 0.1 we can see that learning is already concluded after about 500 boosting iterations, however the achieved RMSE is a little bit higher.
+In the third and last round of hyperparameter tuning we will determine the optimal learning rate `eta`. The slower the learning rate, the more "fine-grained" the fitting process will be. The algorithm learns in smaller steps, but can therefore find finer optima. `eta` achieves this by shrinking the determined variable weights afer each step. It is therefore also called "step size shrinkage". By shrinking feature weights each step, the algorithm becomes more conservative. The plot of the final model clearly shows that a lower learning rate `eta` can reach a lower RMSE value with increasing iterations. The trade-off in terms of computational power required may outweigh the additional accuracy gained.
 
 ```{r, warning = FALSE, message = FALSE}
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 1500, 50),
+  nrounds = seq(200, 5000, 100),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = c(0.01, 0.025, 0.05, 0.075, 0.1),
+  eta = c(0.005, 0.01, 0.015, 0.02, 0.025, 0.5),
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
@@ -3685,9 +3683,8 @@ tuneGrid <- expand.grid(
 
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
-  method = "repeatedcv", 
-  number = 5,
-  repeats = 3,
+  method = "cv", 
+  number = 10,
   verboseIter = FALSE,
   allowParallel = TRUE
 )
@@ -3729,7 +3726,7 @@ model_rmses %>% knitr::kable()
 
 ### Fitting the model with optimized hyperparameters on the entire training subset
 
-As a final step we fit the model with the above determined parameters on the entire training subset `train`. Accordingly, `train` has to be prepared via "one-hot-encoding". We can then fit the final "xgbTree" model with the hyperparameters from the final tuning round.
+As a final step we fit the model with the above determined parameters on the entire training subset `train`. Accordingly, `train` has to be prepared via "one-hot-encoding". We can then fit the final "xgbTree" model with the hyperparameters from the final tuning round. The optimal number of iterations is chosen at this point.
 
 ```{r, echo = FALSE}
 # We select all relevant predictors
@@ -3751,7 +3748,7 @@ test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
 ```{r}
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 2500, 50),
+  nrounds = seq(200, 5000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = xgb_3rd_tuning$bestTune$eta,
   gamma = 0,
@@ -3762,9 +3759,8 @@ tuneGrid <- expand.grid(
 
 # Train control for caret train() function. We use k-fold cross-validation.
 train_control <- caret::trainControl(
-  method = "repeatedcv", 
-  number = 5,
-  repeats = 3,
+  method = "cv", 
+  number = 10,
   verboseIter = FALSE,
   allowParallel = TRUE
 )
@@ -3791,7 +3787,7 @@ ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.1225, 0.14))
 min(xgb_final_model$results$RMSE)
 ```
 
-Finally, we can predict on `test` and prepare the submission file for entry into the *Kaggle* competition, where the submission is evaluated and scored on a public leaderboard. At the time of this writing, the generated submission file scored an RMSE of 0.12304 and achieved a rank of 1241 on the public leaderboard of the respective competition. The public leaderboard is calculated with approximately 50% of the test data and the final results will be based on the other 50%, so final scores are subject to change. Curiously, the actual public score at *Kaggle* is quite close to the RMSE determined by cross-validation during the final model fitting above (RMSE of `r min(xgb_final_model$results$RMSE)`).
+Finally, we can predict on `test` and prepare the submission file for entry into the *Kaggle* competition, where the submission is evaluated and scored on a public leaderboard. At the time of this writing, the generated submission file scored an RMSE of 0.12243 and achieved a rank of 1267 on the public leaderboard of the respective competition. The public leaderboard is calculated with approximately 50% of the test data and the final results will be based on the other 50%, so final scores are subject to change. Curiously, the actual public score at *Kaggle* is quite close to the RMSE determined by cross-validation during the final model fitting above (RMSE of `r min(xgb_final_model$results$RMSE)`).
 
 ```{r, echo = FALSE}
 # Predicting on test. We take the exp() as we log-transformed "SalePrice".
@@ -3812,7 +3808,7 @@ write.table(my_submission, file = "submission.csv",
 
 For this "Choose your own" capstone project I've conducted exploratory data analysis, wrangled the data in various ways, and built a machine learning algorithm with the `caret` package to predict house prices in a dataset from [*Kaggle*](https://www.kaggle.com/c/house-prices-advanced-regression-techniques). The dataset came with a relatively large number of variables containg all kinds of information about houses. I've shown that certain variables have a much larger influence on a houses' sale price than others and how some variables could potentially do more harm than good if, for example, they have many categories with very few entries. I've imputed missing values via kNN-based predictions wherever feasible and noted that mostly the variables' mode was predicted. Most missing values were generated by erroneous variable encoding in the dataset itself, which was easily fixed by simple replacement with appropriate terms. I've conducted some slight feature engineering, for example by combining several individual variables into one.
 
-I developed my algorithm in several steps by tuning different sets of hyperparameters on a training subset and then validating its performance on a test subset of data. The thusly determined hyperparameters were then used in a final model fitting process on the entire `train` dataset. The predictions of the resulting model on `test` were then used to generate a submission file, which was submitted to *Kaggle* and achieved an public leaderboard rank of 1241 with an RMSE of 0.12304 at the time of writing (some of the best submitted models score RMSEs of around 0.105). I've also compared the performance of my developed algorithm with the performance of a simple multivariate linear regression, which performed quite well considering its minimal computational cost in comparison. The exact results may vary between different executions of the code, as the cross-validation folds differ at each run.
+I developed my algorithm in several steps by tuning different sets of hyperparameters on a training subset and then validating its performance on a test subset of data. The thusly determined hyperparameters were then used in a final model fitting process on the entire `train` dataset. The predictions of the resulting model on `test` were then used to generate a submission file, which was submitted to *Kaggle* and achieved an public leaderboard rank of 1267 with an RMSE of 0.12243 at the time of writing (some of the best submitted models score RMSEs of around 0.105). I've also compared the performance of my developed algorithm with the performance of a simple multivariate linear regression, which performed quite well considering its minimal computational cost in comparison. The exact results may vary between different executions of the code, as the cross-validation folds differ at each run.
 
 Further improvements in model performance could be achieved by further feature engineering and by employing an ensemble of well-trained machine learning algorithms ("stacked regressions"). However, the goal of my project was not to score the lowest possible RMSE, but to practice data exploration, wrangling and building a relatively simple and interpretable algorithm. Due to the sheer number of features, I ended up mostly not going into greater depth in my data exploration. By systematically exploring each and every feature of the dataset, I acquired a certain intuition about their possible contribution to the outcome variable "SalePrice". It also helped in dealing with missing values and finding opportunities for some slight feature engineering. Optimally, I would have tested the influence on model performance of each and every modification I have applied to the dataset to test and see whether it was actually beneficial. However, this would have required very frequent re-running of the modelling process and probably would lead to a large increase in the size of the report. I ended up completely re-doing the entire data exploration part three times and ultimately decided not to test the influence of my dataset modifications in isolation. I also spent large amounts of time selecting hyperparameters for my algorithm and have probably re-run every part over a hundred times (throughout, I was able to iteratively improve my algorithms' score on *Kaggle*), even though the improvements in terms of RMSE were relatively minor. Through this I learned that simply "turning the big knobs" (as in, `nrounds`, `max_depth`, and `eta` for "xgbTree" in `caret`) already leads to decent performance improvements. 
 
