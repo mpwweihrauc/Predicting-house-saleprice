@@ -44,7 +44,6 @@ summary(train)
 summary(train$SalePrice)
 
 
-
 #########################
 # Dataset manipulations #
 #########################
@@ -2936,11 +2935,11 @@ model_rmses %>% knitr::kable()
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
   nrounds = seq(200, 2000, 50),
-  max_depth = c(2, 3, 4, 5),
+  max_depth = c(2, 4, 6, 8),
   eta = 0.025,
   gamma = 0,
   colsample_bytree = 0.8,
-  min_child_weight = c(2, 3, 4, 5),
+  min_child_weight = c(2, 4, 6, 8),
   subsample = 0.8
 )
 
@@ -2996,9 +2995,9 @@ tuneGrid <- expand.grid(
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = 0.025,
   gamma = 0,
-  colsample_bytree = seq(0.6, 0.9, 0.1),
+  colsample_bytree = seq(0.2, 1, 0.2),
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
-  subsample = seq(0.6, 0.9, 0.1)
+  subsample = seq(0.2, 1, 0.2)
 )
 
 # We define a custom train control for the caret train() function.
@@ -3035,7 +3034,7 @@ ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.12, 0.14))
 tuneGrid <- expand.grid(
   nrounds = seq(200, 5000, 100),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = c(0.005, 0.01, 0.015, 0.02, 0.025, 0.5),
+  eta = c(0.01, 0.015, 0.02, 0.025, 0.05),
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
@@ -3045,7 +3044,7 @@ tuneGrid <- expand.grid(
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
   method = "cv", 
-  number = 10,
+  number = 6,
   verboseIter = FALSE,
   allowParallel = TRUE
 )
@@ -3103,7 +3102,7 @@ test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
 
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(200, 5000, 50),
+  nrounds = seq(200, 8000, 100),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = xgb_3rd_tuning$bestTune$eta,
   gamma = 0,
@@ -3115,7 +3114,7 @@ tuneGrid <- expand.grid(
 # Train control for caret train() function. We use k-fold cross-validation.
 train_control <- caret::trainControl(
   method = "cv", 
-  number = 10,
+  number = 6,
   verboseIter = FALSE,
   allowParallel = TRUE
 )

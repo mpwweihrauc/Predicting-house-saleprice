@@ -3545,11 +3545,11 @@ After training and fitting the model, we will visually inspect which set of hype
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
   nrounds = seq(200, 2000, 50),
-  max_depth = c(2, 3, 4, 5),
+  max_depth = c(2, 4, 6, 8),
   eta = 0.025,
   gamma = 0,
   colsample_bytree = 0.8,
-  min_child_weight = c(2, 3, 4, 5),
+  min_child_weight = c(2, 4, 6, 8),
   subsample = 0.8
 )
 
@@ -3618,9 +3618,9 @@ tuneGrid <- expand.grid(
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = 0.025,
   gamma = 0,
-  colsample_bytree = seq(0.6, 0.9, 0.1),
+  colsample_bytree = seq(0.2, 1, 0.2),
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
-  subsample = seq(0.6, 0.9, 0.1)
+  subsample = seq(0.2, 1, 0.2)
 )
 
 # We define a custom train control for the caret train() function.
@@ -3674,7 +3674,7 @@ In the third and last round of hyperparameter tuning we will determine the optim
 tuneGrid <- expand.grid(
   nrounds = seq(200, 5000, 100),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = c(0.005, 0.01, 0.015, 0.02, 0.025, 0.5),
+  eta = c(0.01, 0.015, 0.02, 0.025, 0.05),
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
@@ -3710,7 +3710,7 @@ ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
 
 ```
 
-We can now predict on `test_set` and record "out-of-bag" RMSE. We note a small improvement over the second tuning round.
+We can now predict on `test_set` and record "out-of-bag" RMSE. We note a small reduction in RMSE over the second tuning round, as the algorithm didn't converge within the allotted `nrounds`.
 
 ```{r}
 # We predict on the test_set and record the "out-of-bag" RMSE.
@@ -3748,7 +3748,7 @@ test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
 ```{r}
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(200, 5000, 50),
+  nrounds = seq(200, 8000, 100),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = xgb_3rd_tuning$bestTune$eta,
   gamma = 0,
@@ -3775,6 +3775,9 @@ xgb_final_model <- caret::train(
   verbose = FALSE,
   preProcess = c("nzv", "center", "scale")
 )
+  
+# Print the best tuning parameters.
+xgb_final_model$bestTune
 ```
 
 We can then visualize the final model and take a look at the lowest cross-validation RMSE value, prior to predicting against `test` (which doesn't contain a "SalePrice" column).  
@@ -3810,7 +3813,7 @@ For this "Choose your own" capstone project I've conducted exploratory data anal
 
 I developed my algorithm in several steps by tuning different sets of hyperparameters on a training subset and then validating its performance on a test subset of data. The thusly determined hyperparameters were then used in a final model fitting process on the entire `train` dataset. The predictions of the resulting model on `test` were then used to generate a submission file, which was submitted to *Kaggle* and achieved an public leaderboard rank of 1267 with an RMSE of 0.12243 at the time of writing (some of the best submitted models score RMSEs of around 0.105). I've also compared the performance of my developed algorithm with the performance of a simple multivariate linear regression, which performed quite well considering its minimal computational cost in comparison. The exact results may vary between different executions of the code, as the cross-validation folds differ at each run.
 
-Further improvements in model performance could be achieved by further feature engineering and by employing an ensemble of well-trained machine learning algorithms ("stacked regressions"). However, the goal of my project was not to score the lowest possible RMSE, but to practice data exploration, wrangling and building a relatively simple and interpretable algorithm. Due to the sheer number of features, I ended up mostly not going into greater depth in my data exploration. By systematically exploring each and every feature of the dataset, I acquired a certain intuition about their possible contribution to the outcome variable "SalePrice". It also helped in dealing with missing values and finding opportunities for some slight feature engineering. Optimally, I would have tested the influence on model performance of each and every modification I have applied to the dataset to test and see whether it was actually beneficial. However, this would have required very frequent re-running of the modelling process and probably would lead to a large increase in the size of the report. I ended up completely re-doing the entire data exploration part three times and ultimately decided not to test the influence of my dataset modifications in isolation. I also spent large amounts of time selecting hyperparameters for my algorithm and have probably re-run every part over a hundred times (throughout, I was able to iteratively improve my algorithms' score on *Kaggle*), even though the improvements in terms of RMSE were relatively minor. Through this I learned that simply "turning the big knobs" (as in, `nrounds`, `max_depth`, and `eta` for "xgbTree" in `caret`) already leads to decent performance improvements. 
+Further improvements in model performance could be achieved by further feature engineering and by employing an ensemble of well-trained machine learning algorithms ("stacked regressions"). However, the goal of my project was not to score the lowest possible RMSE, but to practice data exploration, wrangling and building a relatively simple and interpretable algorithm. Due to the sheer number of features, I ended up mostly not going into greater depth in my data exploration. By systematically exploring each and every feature of the dataset, I acquired a certain intuition about their possible contribution to the outcome variable "SalePrice". It also helped in dealing with missing values and finding opportunities for some slight feature engineering. Optimally, I would have tested the influence on model performance of each and every modification I have applied to the dataset to test and see whether it was actually beneficial. However, this would have required very frequent re-running of the modelling process and probably would lead to a large increase in the size of the report. I ended up completely re-doing the entire data exploration part three times and ultimately decided not to test the influence of my dataset modifications in isolation. I also spent large amounts of time selecting hyperparameters for my algorithm and have probably re-run every part over a hundred times (throughout, I was able to iteratively improve my algorithms' score on *Kaggle*), even though the improvements in terms of RMSE were relatively minor. Through this I learned that simply "turning the big knobs" (as in, `nrounds`, `max_depth`, and `eta` for "xgbTree" in `caret`) already leads to decent performance improvements.
 
 
 
