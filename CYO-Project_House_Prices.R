@@ -3046,121 +3046,6 @@ model_rmses %>% knitr::kable()
 
 
 
-### 3rd tune ###
-
-# We define a tune grid with selected ranges of hyperparameters to tune.
-tuneGrid <- expand.grid(
-<<<<<<< HEAD
-  nrounds = seq(150, 2500, 50),
-  max_depth = xgb_2nd_tuning$bestTune$max_depth,
-  eta = xgb_2nd_tuning$bestTune$eta,
-=======
-  nrounds = seq(200, 4000, 100),
-  max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = c(0.01, 0.015, 0.02, 0.025, 0.05),
->>>>>>> 7fc3c5cc74d5902626c6559cb1aac1196ab73177
-  gamma = 0,
-  colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
-  min_child_weight = xgb_2nd_tuning$bestTune$min_child_weight,
-  subsample = xgb_2nd_tuning$bestTune$subsample
-)
-
-# Parallelization, which will be used to speed up hyperparameter tuning.
-cluster <- makeCluster(detectCores(logical = FALSE) - 1) 
-registerDoParallel(cluster)
-
-# We run the model with above parameters.
-# Additionally, we add pre-processing which removes near-zero variance estimators,
-# as well as centers and scales the data prior to training.
-xgb_3rd_tuning <- caret::train(
-  x = train_set_treated,
-  y = train_set$SalePrice,
-  trControl = train_control,
-  tuneGrid = tuneGrid,
-  method = "xgbTree",
-  verbose = FALSE,
-  preProcess = c("nzv", "center", "scale")
-)
-
-# Parallelization.
-stopCluster(cluster)
-registerDoSEQ()
-
-# Print the best tuning parameters.
-xgb_3rd_tuning$bestTune
-
-# Visualization of the 3rd tuning round.
-ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.12, 0.14))
-
-
-# We predict on the test_set and record the "out-of-bag" RMSE.
-xgb_3rd_tuning_pred <- predict(xgb_3rd_tuning, test_set_treated)
-
-xgb_3rd_tuning_rmse <- RMSE(xgb_3rd_tuning_pred, test_set$SalePrice)
-
-model_rmses <- bind_rows(model_rmses,
-                         data_frame(Model = "caret_xgbTree_3rd_tune", RMSE = xgb_3rd_tuning_rmse))
-
-model_rmses %>% knitr::kable()
-
-
-### 4th tune ###
-
-# We define a tune grid with selected ranges of hyperparameters to tune.
-tuneGrid <- expand.grid(
-  nrounds = seq(150, 5000, 50),
-  max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = c(0.01, 0.015, 0.02, 0.025, 0.03),
-  gamma = 0,
-  colsample_bytree = xgb_3rd_tuning$bestTune$colsample_bytree,
-  min_child_weight = xgb_2nd_tuning$bestTune$min_child_weight,
-  subsample = seq(0.5, 1, 0.1)
-)
-
-# Parallelization, which will be used to speed up hyperparameter tuning.
-cluster <- makeCluster(detectCores(logical = FALSE) - 1) 
-registerDoParallel(cluster)
-
-# We run the model with above parameters.
-# Additionally, we add pre-processing which removes near-zero variance estimators,
-# as well as centers and scales the data prior to training.
-xgb_4th_tuning <- caret::train(
-  x = train_set_treated,
-  y = train_set$SalePrice,
-  trControl = train_control,
-  tuneGrid = tuneGrid,
-  method = "xgbTree",
-  verbose = FALSE,
-  preProcess = c("nzv", "center", "scale")
-)
-
-# Parallelization.
-stopCluster(cluster)
-registerDoSEQ()
-
-# Print the best tuning parameters.
-xgb_4th_tuning$bestTune
-
-# Visualization of the 4th tuning round.
-ggplot(xgb_4th_tuning) + scale_y_continuous(limits = c(0.12, 0.14))
-
-
-# We predict on the test_set and record the "out-of-bag" RMSE.
-xgb_4th_tuning_pred <- predict(xgb_4th_tuning, test_set_treated)
-
-xgb_4th_tuning_rmse <- RMSE(xgb_4th_tuning_pred, test_set$SalePrice)
-
-model_rmses <- bind_rows(model_rmses,
-                         data_frame(Model = "caret_xgbTree_4th_tune", RMSE = xgb_4th_tuning_rmse))
-
-model_rmses %>% knitr::kable()
-
-
-
-
-
-
-
 ### Fitting the final XGBoost model on the entire train data ###
 
 # We select all relevant predictors
@@ -3185,15 +3070,9 @@ registerDoParallel(cluster)
 
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-<<<<<<< HEAD
   nrounds = seq(150, 10000, 50),
   max_depth = xgb_2nd_tuning$bestTune$max_depth,
   eta = c(0.01, 0.015, 0.02, 0.025),
-=======
-  nrounds = seq(200, 4000, 100),
-  max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = xgb_3rd_tuning$bestTune$eta,
->>>>>>> 7fc3c5cc74d5902626c6559cb1aac1196ab73177
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_2nd_tuning$bestTune$min_child_weight,
