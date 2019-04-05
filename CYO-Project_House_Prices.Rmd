@@ -47,8 +47,8 @@ if(!require(doParallel)) install.packages("doParallel", repos = "http://cran.us.
 
 
 # Parallelization, which will be used to speed up hyperparameter tuning steps later.
-cl <- makeCluster(detectCores(logical = FALSE))
-registerDoParallel(cl = cl)
+cl <- makePSOCKcluster(4)
+registerDoParallel(cl)
 
 
 # We import the training and testing data subsets (files from Kaggle).
@@ -3545,20 +3545,19 @@ After training and fitting the model, we will visually inspect which set of hype
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
   nrounds = seq(200, 2000, 50),
-  max_depth = c(2, 4, 6, 8),
-  eta = 0.025,
+  max_depth = c(2, 3, 4, 5, 6),
+  eta = c(0.01, 0.015, 0.02, 0.025, 0.03, 0.035),
   gamma = 0,
-  colsample_bytree = 0.8,
-  min_child_weight = c(2, 4, 6, 8),
-  subsample = 0.8
+  colsample_bytree = 1,
+  min_child_weight = 1,
+  subsample = 1
 )
 
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
   method = "cv", 
   number = 10,
-  verboseIter = FALSE,
-  allowParallel = TRUE
+  verboseIter = FALSE
 )
 
 # We run the model with above parameters.
@@ -3627,8 +3626,7 @@ tuneGrid <- expand.grid(
 train_control <- trainControl(
   method = "cv", 
   number = 10,
-  verboseIter = FALSE,
-  allowParallel = TRUE
+  verboseIter = FALSE
 )
 
 # We run the model with above parameters.
@@ -3685,8 +3683,7 @@ tuneGrid <- expand.grid(
 train_control <- trainControl(
   method = "cv", 
   number = 10,
-  verboseIter = FALSE,
-  allowParallel = TRUE
+  verboseIter = FALSE
 )
 
 # We run the model with above parameters.
@@ -3761,8 +3758,7 @@ tuneGrid <- expand.grid(
 train_control <- caret::trainControl(
   method = "cv", 
   number = 10,
-  verboseIter = FALSE,
-  allowParallel = TRUE
+  verboseIter = FALSE
 )
 
 # Run the model with above parameters.
