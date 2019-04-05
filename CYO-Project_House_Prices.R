@@ -3050,9 +3050,15 @@ model_rmses %>% knitr::kable()
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
+<<<<<<< HEAD
   nrounds = seq(150, 2500, 50),
   max_depth = xgb_2nd_tuning$bestTune$max_depth,
   eta = xgb_2nd_tuning$bestTune$eta,
+=======
+  nrounds = seq(200, 4000, 100),
+  max_depth = xgb_1st_tuning$bestTune$max_depth,
+  eta = c(0.01, 0.015, 0.02, 0.025, 0.05),
+>>>>>>> 7fc3c5cc74d5902626c6559cb1aac1196ab73177
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_2nd_tuning$bestTune$min_child_weight,
@@ -3179,9 +3185,15 @@ registerDoParallel(cluster)
 
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
+<<<<<<< HEAD
   nrounds = seq(150, 10000, 50),
   max_depth = xgb_2nd_tuning$bestTune$max_depth,
   eta = c(0.01, 0.015, 0.02, 0.025),
+=======
+  nrounds = seq(200, 4000, 100),
+  max_depth = xgb_1st_tuning$bestTune$max_depth,
+  eta = xgb_3rd_tuning$bestTune$eta,
+>>>>>>> 7fc3c5cc74d5902626c6559cb1aac1196ab73177
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_2nd_tuning$bestTune$min_child_weight,
