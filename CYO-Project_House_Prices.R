@@ -2929,9 +2929,9 @@ model_rmses %>% knitr::kable()
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 2500, 50),
-  max_depth = c(2, 3, 4, 5),
-  eta = 0.025,
+  nrounds = seq(150, 3000, 50),
+  max_depth = c(2, 3, 4, 5, 6),
+  eta = 0.015,
   gamma = 0,
   colsample_bytree = 0.8,
   min_child_weight = seq(1, 9, 2),
@@ -2943,7 +2943,8 @@ train_control <- trainControl(
   method = "repeatedcv", 
   number = 5,
   repeats = 3,
-  verboseIter = FALSE
+  verboseIter = TRUE,
+  allowParallel = TRUE
 )
 
 
@@ -2960,8 +2961,9 @@ xgb_1st_tuning <- caret::train(
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
-  verbose = FALSE,
-  preProcess = c("nzv", "center", "scale")
+  verbose = TRUE,
+  preProcess = c("nzv", "center", "scale"),
+  nthread = 1
 )
 
 # Parallelization.
@@ -2996,7 +2998,7 @@ model_rmses %>% knitr::kable()
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 2000, 50),
+  nrounds = seq(150, 3000, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = xgb_1st_tuning$bestTune$eta,
   gamma = 0,
@@ -3070,9 +3072,9 @@ registerDoParallel(cluster)
 
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 10000, 50),
+  nrounds = seq(150, 3000, 50),
   max_depth = xgb_2nd_tuning$bestTune$max_depth,
-  eta = c(0.01, 0.015, 0.02, 0.025),
+  eta = xgb_2nd_tuning$bestTune$eta,
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_2nd_tuning$bestTune$min_child_weight,
@@ -3095,6 +3097,8 @@ xgb_final_model <- caret::train(
 stopCluster(cluster)
 registerDoSEQ()
 
+# Best tune of final model.
+xgb_final_model$bestTune
 
 # Visualization of the final fitted model.
 ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.12, 0.14))

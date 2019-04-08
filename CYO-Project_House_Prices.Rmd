@@ -3547,8 +3547,8 @@ tuneGrid <- expand.grid(
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
   method = "repeatedcv", 
-  number = 3,
-  repeats = 1,
+  number = 10,
+  repeats = 3,
   verboseIter = FALSE,
   allowParallel = TRUE
 )
@@ -3646,11 +3646,11 @@ xgb_2nd_tuning <- caret::train(
 # Parallelization.
 stopCluster(cluster)
 registerDoSEQ()
-```
-```{r}
+
 # Print the best tuning parameters.
 xgb_2nd_tuning$bestTune
-
+```
+```{r, echo = FALSE, warning = FALSE}
 # Visualization of the 2nd tuning round.
 ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.12, 0.14))
 ```
@@ -3706,11 +3706,11 @@ xgb_3rd_tuning <- caret::train(
 # Parallelization.
 stopCluster(cluster)
 registerDoSEQ()
-```
-```{r}
+
 # Print the best tuning parameters.
 xgb_3rd_tuning$bestTune
-
+```
+```{r, echo = FALSE, warning = FALSE}
 # Visualization of the 3rd tuning round.
 ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
 
