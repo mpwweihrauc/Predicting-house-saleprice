@@ -45,12 +45,6 @@ if(!require(vip)) install.packages("vip", repos = "http://cran.us.r-project.org"
 if(!require(VIM)) install.packages("VIM", repos = "http://cran.us.r-project.org")
 if(!require(doParallel)) install.packages("doParallel", repos = "http://cran.us.r-project.org")
 
-
-# Parallelization, which will be used to speed up hyperparameter tuning steps later.
-cl <- makePSOCKcluster(4)
-registerDoParallel(cl)
-
-
 # We import the training and testing data subsets (files from Kaggle).
 train <- read.csv("train.csv", stringsAsFactors = TRUE)
 test <- read.csv("test.csv", stringsAsFactors = TRUE)
@@ -3343,16 +3337,11 @@ test <- subset(dataset[test$Id, ], select = -SalePrice)
 Missing values were mostly produced by erroneous encoding in the dataset, where the absence of a garage for example was entered as "NA". Actual missing values were mostly dealt with via kNN-based imputation. The kNN algorithm mostly predicted the most common value for a given feature/category. The value for the k-nearest neighbours was set to k = 9 arbitrarily and could have been optimized for each individual case. The kNN algorithm assumes that a value can be estimated/approximated by the values that are closest to it, based on other variables (i.e. houses with very similar other characteristics).
 
 
-
-
-
-
-
 # Modelling approaches and results
 
 First we write a loss-function to determine the residual mean squared error, or RMSE of the model. The function calculates the residuals/error and then takes the root mean square of them.
 
-```{r}
+```{r, echo = FALSE}
 # Defining the loss-function which calculates the RMSE.
 RMSE <- function(predicted_prices, true_prices) {
   error <- predicted_prices - true_prices
@@ -3362,7 +3351,7 @@ RMSE <- function(predicted_prices, true_prices) {
 
 Next, we split `train` into a separate `train_set` and `test_set` for algorithm evaluation purposes (we won't use the real `test` subset for this and treat it as completely new data (the "hold-out" set) for final evaluations only).
 
-```{r, message = FALSE}
+```{r, echo = FALSE, message = FALSE}
 # test_set will receive 20% of the data, train_set will receive 80%.
 # The test_set will serve as a "hold-out" set to check algorithm performance.
 set.seed(1442)
@@ -3384,7 +3373,7 @@ train_set <- rbind(train_set, removed)
 
 As our first, very simple model we predict house "SalePrice" via simple linear regression with just "GrLivArea". We also generate a table to keep track of the RMSEs our various models generate. Simple linear regression with a single predictor, "GrLivArea", achieved the RMSE printed below.
 
-```{r}
+```{r, echo = FALSE}
 # Linear regression with a single predictor, "GrLivArea".
 model_1_lm <- lm(SalePrice ~ GrLivArea, data = train_set) 
 
@@ -3406,7 +3395,7 @@ model_rmses %>% knitr::kable()
 
 Multivariate linear regression utilizing several predictors achieved a much lower RMSE, which is printed below.
 
-```{r, warning = FALSE, message = FALSE}
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
 # Multivariate linear regression with several predictors.
 model_2_multi_lm <- lm(SalePrice ~ GrLivArea + OverallQual + YearBuilt, data = train_set) 
 
@@ -3428,7 +3417,7 @@ model_rmses %>% knitr::kable()
 
 Multivariate linear regression utilizing all available predictors achieves an even lower RMSE, which is printed below.
 
-```{r, warning = FALSE, message = FALSE}
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
 # Multivariate linear regression with all predictors.
 model_3_multi_lm <- lm(SalePrice ~ ., data = train_set) 
 
@@ -3448,9 +3437,9 @@ model_rmses %>% knitr::kable()
 
 ## Gradient boosting machine model: XGBoost
 
-We will utilize the XGBoost algorithm to build models to predict "SalePrice". XGBoost requires the dataset to be entirely in numerical format, which can be achieved via so-called "one-hot-encoding" of the variables. One way to do this is to use the "vtreat" package and its function "designTreatmentsZ", which devises a "treatment plan" to "one-hot-encode" all relevant variables at once. This "treatment plan" is then used via the "prepare" function to do the "one-hot-encoding" on the `train_set` and on the `test_set`. We thus generate `train_set_treated` and `test_set_treated` for use with XGBoost.
+We will utilize the XGBoost algorithm to build models to predict "SalePrice". XGBoost requires the dataset to be entirely in numerical format, which can be achieved via so-called "one-hot-encoding" of the variables. One way to do this is to use the "vtreat" package and its function "designTreatmentsZ", which devises a "treatment plan" to "one-hot-encode" all relevant variables at once. This "treatment plan" is then used via the `prepare()` function to do the "one-hot-encoding" on the `train_set` and on the `test_set`. We thus generate `train_set_treated` and `test_set_treated` for use with XGBoost.
 
-```{r, message = FALSE}
+```{r, echo = FALSE, message = FALSE}
 # We select all relevant predictors.
 variables <- names(subset(train_set, select = -c(Id, SalePrice)))
 
@@ -3479,9 +3468,9 @@ train_set_treated <- vtreat::prepare(treatment_plan, train_set,  varRestriction 
 test_set_treated <- vtreat::prepare(treatment_plan, test_set,  varRestriction = newvars)
 ```
 
-Next we will use the `xgb.cv()` function to determine the total number of rounds `nrounds` that improve RMSE until only the training RMSE reduces further, while the cross-validated RMSE already reached a minimum. While the training RMSE may continue to decrease on more and more rounds of boosting iterations ("overfitting"), the test RMSE usually does not after some point. After running `xgb.cv()` we can access its event log to find the optimal number of iterations. As the treated `train_set` no longer contains the outcome variable "SalePrice", we have to use the untreated `train_set` to provide it as a `label`. For our baseline XGBoost model, we will use mostly default parameters.
+Next we will use the `xgb.cv()` function to determine the total number of rounds `nrounds` that improve RMSE until only the training RMSE reduces further, while the cross-validated RMSE already reached a minimum. While the training RMSE may continue to decrease on more and more rounds of boosting iterations ("overfitting"), the test RMSE usually does not after some point. After running `xgb.cv()` we can access its event log to find the optimal number of iterations. As the treated `train_set` no longer contains the outcome variable "SalePrice", we have to use the untreated `train_set` to provide it as a `label`. For our baseline XGBoost model, we will use mostly default parameters. We print the determined RMSE value below.
 
-```{r}
+```{r, echo = FALSE}
 # xgb.cv only takes a matrix of the treated, all-numerical input data.
 cv <- xgb.cv(data = as.matrix(train_set_treated),  
              label = train_set$SalePrice, # Outcome from untreated data
@@ -3534,31 +3523,39 @@ The RMSE has worsened compared to the simple linear regression approach. But can
 
 ## Hyperparameter tuning of the XGBoost algorithm "xgbTree" with caret
 
-We will evaluate different values for the hyperparameters of the "xgbTree" algorithm in the `caret` package. As expansive grid searches become computationally very expensive the more parameters are evaluated at the same time (easily into the thousands of models), we will instead evaluate no more than 2 parameters per tuning round and try to visually inspect their influence on model performance. In the first round of tunings, we will determine `max_depth`, the maximal depth of trees to use. Larger trees allow faster learning, but make the model more and more complex and prone to overfitting. The increased model complexity means that the model learns variable relations that might be very specific to the training data and not generalize well to new data. In addition, we will examine different values of `min_child_weight`, which defines the minimum sum of weights of all observations required in a child. Higher values here will counteract overfitting by preventing the model from learning variable relations that might be very specific to the particular sample which was selected for a particular tree. Large values of `min_child_weight` might lead to underfitting the training data. We will select some fairly standard values for the other hyperparameters to avoid exploding the number of models we will train in this first tuning step. We will use 10-fold cross-validation. In addition, we make use of the `caret::preProcess` option to remove near-zero variance predictors and to center and scale our data prior to model fitting. Please note that the range of selected hyperparameters has been reduced empirically to reduce computational time as much as possible. Additionally, the learning rate `eta` has been set at a realtively low value of 0.025 to get a quite fine-grained step size.
+We will evaluate different values for the hyperparameters of the "xgbTree" algorithm in the `caret` package. As expansive grid searches become computationally very expensive the more parameters are evaluated at the same time (easily into the thousands of models), we will instead evaluate no more than 2 parameters per tuning round and try to visually inspect their influence on model performance. In the first round of tunings, we will determine `max_depth`, the maximal depth of trees to use. Larger trees allow faster learning, but make the model more and more complex and prone to overfitting. The increased model complexity means that the model learns variable relations that might be very specific to the training data and not generalize well to new data. In addition, we will examine different values of `min_child_weight`, which defines the minimum sum of weights of all observations required in a child. Higher values here will counteract overfitting by preventing the model from learning variable relations that might be very specific to the particular sample which was selected for a particular tree. Large values of `min_child_weight` might lead to underfitting the training data. We will select some fairly standard values for the other hyperparameters to avoid exploding the number of models we will train in this first tuning step. We will use 10-fold cross-validation. In addition, we make use of the `caret::preProcess` option to remove near-zero variance predictors and to center and scale our data prior to model fitting. Please note that the range of selected hyperparameters has been reduced empirically to reduce computational time as much as possible. Additionally, the learning rate `eta` has been set at a relatively low value of 0.05 to get a fine-grained step size.
 
-After training and fitting the model, we will visually inspect which set of hyperparameters achieved the lowest RMSE value as determined by cross-validation. Afterwards we will predict against our `test_set` ("hold-out-set") and determine "out-of-bag" RMSE.
+After training and fitting the model, we will visually inspect which set of hyperparameters achieved the lowest RMSE value as determined by 3-times repeated 10-fold cross-validation. Afterwards we will predict against our `test_set` ("hold-out-set") and determine "out-of-bag" RMSE.
 
 
 ### First round of hyperparameter tuning: max_depth and min_child_weight
 
-```{r, warning = FALSE, message = FALSE}
+In this first round of hyperparameter tuning we select the optimal values for `max_depth` and `min_child-weight`. Standard values were set for the remaining hyperparameters `colsample_bytree` and `subsample`, which will be optimized in the following tuning steps. The learning rate `eta` is fixed to 0.05 and different values will be investigated during the final tuning round. We print the best determined tuning parameters below and visualize the process.
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(200, 2000, 50),
+  nrounds = seq(200, 2500, 50),
   max_depth = c(2, 3, 4, 5, 6),
-  eta = c(0.01, 0.015, 0.02, 0.025, 0.03, 0.035),
+  eta = 0.05,
   gamma = 0,
   colsample_bytree = 1,
-  min_child_weight = 1,
+  min_child_weight = seq(1, 9, 2),
   subsample = 1
 )
 
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
-  method = "cv", 
-  number = 10,
-  verboseIter = FALSE
+  method = "repeatedcv", 
+  number = 3,
+  repeats = 1,
+  verboseIter = FALSE,
+  allowParallel = TRUE
 )
+
+# Parallelization, which will be used to speed up hyperparameter tuning.
+cluster <- makeCluster(detectCores(logical = TRUE) ) 
+registerDoParallel(cluster)
 
 # We run the model with above parameters.
 # Additionally, we add pre-processing which removes near-zero variance estimators,
@@ -3570,9 +3567,15 @@ xgb_1st_tuning <- caret::train(
   tuneGrid = tuneGrid,
   method = "xgbTree",
   verbose = FALSE,
-  preProcess = c("nzv", "center", "scale")
+  preProcess = c("nzv", "center", "scale"),
+  nthread = 1
 )
 
+# Parallelization.
+stopCluster(cluster)
+registerDoSEQ()
+```
+```{r}
 # Print the best tuning parameters.
 xgb_1st_tuning$bestTune
 
@@ -3584,14 +3587,14 @@ From the tuning plots and the selected best parameters we can see that trees of 
 
 We can also visualize which variables were most important in the modelling process. Unsurprisingly, "GrLivArea" and "TotalBsmtSF" as measures of living space are extremely important in determining "SalePrice". "OverallQual" is the most important variable. "GarageCars" and "TotalBaths" can also be viewed as measurements of house size and living space. The "YearBuilt" is also very important, as is the "KitchenQual" and "OverallCond". 
 
-```{r, fig.height = 3, fig.width = 6}
+```{r, echo = FALSE, fig.height = 3, fig.width = 6}
 # Visualization of the most important features.
 vip(xgb_1st_tuning, num_features = 10) + ggtitle("Variable importance")
 ```
 
 We can now predict on `test_set` and record "out-of-bag" RMSE.
 
-```{r}
+```{r, echo = FALSE}
 # We predict on the test_set and record the "out-of-bag" RMSE.
 xgb_1st_tuning_pred <- predict(xgb_1st_tuning, test_set_treated)
 
@@ -3608,26 +3611,23 @@ The RMSE has improved significantly with these modelling settings. Next, we will
 
 ### Second round of hyperparameter tuning: colsample_bytree and subsample
 
-After we determined good values for `max_depth` and `min_child_weight` in the first tuning round, we will now test several different values for `colsample_bytree` and `subsample`. The latter denotes the fraction of observations to be randomly samples for each tree, thereby preventing overfitting if values are lower. For example, a setting of 0.7 would mean that "xgbTree" would randomly sample 70% of the training data prior to growing trees in each iteration. `colsample_bytree` acts in similar fashion and denotes the subsample ratio of columns when constructing each tree.
+After we determined good values for `max_depth` and `min_child_weight` in the first tuning round, we will now test several different values for `colsample_bytree` and `subsample`. The latter denotes the fraction of observations to be randomly samples for each tree, thereby preventing overfitting if values are lower. For example, a setting of 0.7 would mean that "xgbTree" would randomly sample 70% of the training data prior to growing trees in each iteration. `colsample_bytree` acts in similar fashion and denotes the subsample ratio of columns when constructing each tree. We print the best determined tuning parameters below and visulaize the process.
 
-```{r, warning = FALSE, message = FALSE}
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(200, 2000, 50),
+  nrounds = seq(200, 2500, 50),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = 0.025,
+  eta = xgb_1st_tuning$bestTune$eta,
   gamma = 0,
-  colsample_bytree = seq(0.2, 1, 0.2),
+  colsample_bytree = seq(0.4, 0.9, 0.1),
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
-  subsample = seq(0.2, 1, 0.2)
+  subsample = seq(0.5, 1, 0.1)
 )
 
-# We define a custom train control for the caret train() function.
-train_control <- trainControl(
-  method = "cv", 
-  number = 10,
-  verboseIter = FALSE
-)
+# Parallelization, which will be used to speed up hyperparameter tuning.
+cluster <- makeCluster(detectCores(logical = TRUE) ) 
+registerDoParallel(cluster)
 
 # We run the model with above parameters.
 # Additionally, we add pre-processing which removes near-zero variance estimators,
@@ -3639,9 +3639,15 @@ xgb_2nd_tuning <- caret::train(
   tuneGrid = tuneGrid,
   method = "xgbTree",
   verbose = FALSE,
-  preProcess = c("nzv", "center", "scale")
+  preProcess = c("nzv", "center", "scale"),
+  nthread = 1
 )
 
+# Parallelization.
+stopCluster(cluster)
+registerDoSEQ()
+```
+```{r}
 # Print the best tuning parameters.
 xgb_2nd_tuning$bestTune
 
@@ -3649,9 +3655,9 @@ xgb_2nd_tuning$bestTune
 ggplot(xgb_2nd_tuning) + scale_y_continuous(limits = c(0.12, 0.14))
 ```
 
-We can now predict on `test_set` and record "out-of-bag" RMSE. We note a small decrement over the first tuning round.
+We can now predict on `test_set` and record "out-of-bag" RMSE.
 
-```{r}
+```{r, echo = FALSE}
 # We predict on the test_set and record the "out-of-bag" RMSE.
 xgb_2nd_tuning_pred <- predict(xgb_2nd_tuning, test_set_treated)
 
@@ -3665,26 +3671,23 @@ model_rmses %>% knitr::kable()
 
 ### Third round of hyperparameter tuning: eta and nrounds
 
-In the third and last round of hyperparameter tuning we will determine the optimal learning rate `eta`. The slower the learning rate, the more "fine-grained" the fitting process will be. The algorithm learns in smaller steps, but can therefore find finer optima. `eta` achieves this by shrinking the determined variable weights afer each step. It is therefore also called "step size shrinkage". By shrinking feature weights each step, the algorithm becomes more conservative. The plot of the final model clearly shows that a lower learning rate `eta` can reach a lower RMSE value with increasing iterations. The trade-off in terms of computational power required may outweigh the additional accuracy gained.
+In the third and last round of hyperparameter tuning we will determine the optimal learning rate `eta`. The slower the learning rate, the more "fine-grained" the fitting process will be. The algorithm learns in smaller steps, but can therefore find finer optima. `eta` achieves this by shrinking the determined variable weights afer each step. It is therefore also called "step size shrinkage". By shrinking feature weights each step, the algorithm becomes more conservative. The plot of the final model clearly shows that a lower learning rate `eta` can reach a lower RMSE value with increasing iterations. The trade-off in terms of computational power required may outweigh the additional accuracy gained. We print the best determined tuning parameters below and visualize the process.
 
-```{r, warning = FALSE, message = FALSE}
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(200, 4000, 100),
-  max_depth = xgb_1st_tuning$bestTune$max_depth,
-  eta = c(0.01, 0.015, 0.02, 0.025, 0.05),
+  nrounds = seq(200, 5000, 50),
+  max_depth = xgb_2nd_tuning$bestTune$max_depth,
+  eta = c(0.01, 0.02, 0.03, 0.04, 0.05),
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
-  min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
+  min_child_weight = xgb_2nd_tuning$bestTune$min_child_weight,
   subsample = xgb_2nd_tuning$bestTune$subsample
 )
 
-# We define a custom train control for the caret train() function.
-train_control <- trainControl(
-  method = "cv", 
-  number = 10,
-  verboseIter = FALSE
-)
+# Parallelization, which will be used to speed up hyperparameter tuning.
+cluster <- makeCluster(detectCores(logical = TRUE) ) 
+registerDoParallel(cluster)
 
 # We run the model with above parameters.
 # Additionally, we add pre-processing which removes near-zero variance estimators,
@@ -3696,9 +3699,15 @@ xgb_3rd_tuning <- caret::train(
   tuneGrid = tuneGrid,
   method = "xgbTree",
   verbose = FALSE,
-  preProcess = c("nzv", "center", "scale")
+  preProcess = c("nzv", "center", "scale"),
+  nthread = 1
 )
 
+# Parallelization.
+stopCluster(cluster)
+registerDoSEQ()
+```
+```{r}
 # Print the best tuning parameters.
 xgb_3rd_tuning$bestTune
 
@@ -3707,9 +3716,9 @@ ggplot(xgb_3rd_tuning) + scale_y_continuous(limits = c(0.1225, 0.14))
 
 ```
 
-We can now predict on `test_set` and record "out-of-bag" RMSE. We note a small reduction in RMSE over the second tuning round, as the algorithm didn't converge within the allotted `nrounds`.
+We can now predict on `test_set` and record "out-of-bag" RMSE.
 
-```{r}
+```{r, echo = FALSE}
 # We predict on the test_set and record the "out-of-bag" RMSE.
 xgb_3rd_tuning_pred <- predict(xgb_3rd_tuning, test_set_treated)
 
@@ -3723,7 +3732,7 @@ model_rmses %>% knitr::kable()
 
 ### Fitting the model with optimized hyperparameters on the entire training subset
 
-As a final step we fit the model with the above determined parameters on the entire training subset `train`. Accordingly, `train` has to be prepared via "one-hot-encoding". We can then fit the final "xgbTree" model with the hyperparameters from the final tuning round. The optimal number of iterations is chosen at this point.
+As a final step we fit the model with the above determined parameters on the entire training subset `train`. Accordingly, `train` has to be prepared via "one-hot-encoding". We can then fit the final "xgbTree" model with the hyperparameters from the final tuning round. The optimal number of iterations is chosen at this point. We can print the best tuning parameters below.
 
 ```{r, echo = FALSE}
 # We select all relevant predictors
@@ -3741,25 +3750,21 @@ newvars <- treatment_plan %>%
 # we devised above and encodes all relevant variables "newvars" numerically.
 train_treated <- vtreat::prepare(treatment_plan, train,  varRestriction = newvars)
 test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
-```
-```{r}
+
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(200, 4000, 100),
-  max_depth = xgb_1st_tuning$bestTune$max_depth,
+  nrounds = seq(200, 5000, 50),
+  max_depth = xgb_3rd_tuning$bestTune$max_depth,
   eta = xgb_3rd_tuning$bestTune$eta,
   gamma = 0,
-  colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
-  min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
-  subsample = xgb_2nd_tuning$bestTune$subsample
+  colsample_bytree = xgb_3rd_tuning$bestTune$colsample_bytree,
+  min_child_weight = xgb_3rd_tuning$bestTune$min_child_weight,
+  subsample = xgb_3rd_tuning$bestTune$subsample
 )
 
-# Train control for caret train() function. We use k-fold cross-validation.
-train_control <- caret::trainControl(
-  method = "cv", 
-  number = 10,
-  verboseIter = FALSE
-)
+# Parallelization, which will be used to speed up hyperparameter tuning.
+cluster <- makeCluster(detectCores(logical = TRUE) ) 
+registerDoParallel(cluster)
 
 # Run the model with above parameters.
 xgb_final_model <- caret::train(
@@ -3769,16 +3774,22 @@ xgb_final_model <- caret::train(
   tuneGrid = tuneGrid,
   method = "xgbTree",
   verbose = FALSE,
-  preProcess = c("nzv", "center", "scale")
+  preProcess = c("nzv", "center", "scale"),
+  nthread = 1
 )
-  
+
+# Parallelization.
+stopCluster(cluster)
+registerDoSEQ()
+```
+```{r}
 # Print the best tuning parameters.
 xgb_final_model$bestTune
 ```
 
-We can then visualize the final model and take a look at the lowest cross-validation RMSE value, prior to predicting against `test` (which doesn't contain a "SalePrice" column).  
+We can then visualize the final model and take a look at the lowest cross-validation RMSE value printed below, prior to predicting against `test` (which doesn't contain a "SalePrice" column).
 
-```{r, error = FALSE, message = FALSE, warning = FALSE}
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
 # Visualization of the final fitted model.
 ggplot(xgb_final_model) + scale_y_continuous(limits = c(0.1225, 0.14))
 
@@ -3789,7 +3800,7 @@ min(xgb_final_model$results$RMSE)
 Finally, we can predict on `test` and prepare the submission file for entry into the *Kaggle* competition, where the submission is evaluated and scored on a public leaderboard. At the time of this writing, the generated submission file scored an RMSE of 0.12243 and achieved a rank of 1267 on the public leaderboard of the respective competition. The public leaderboard is calculated with approximately 50% of the test data and the final results will be based on the other 50%, so final scores are subject to change. Curiously, the actual public score at *Kaggle* is quite close to the RMSE determined by cross-validation during the final model fitting above (RMSE of `r min(xgb_final_model$results$RMSE)`).
 
 ```{r, echo = FALSE}
-# Predicting on test. We take the exp() as we log-transformed "SalePrice".
+# Predicting on test. We take the exp(), as we log-transformed "SalePrice".
 xgb_final_model_pred <- exp(predict(xgb_final_model, as.matrix(test_treated)))
 
 # We create the submission file.
