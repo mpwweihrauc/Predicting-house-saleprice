@@ -2784,7 +2784,7 @@ model_1_pred <- predict(model_1_lm, newdata = test_set)
 model_1_lm_RMSE <- RMSE(model_1_pred, test_set$SalePrice) 
 
 # Record RMSE of the model.
-model_rmses <- data_frame(Model = "Simple_lm", RMSE = model_1_lm_RMSE)
+model_rmses <- tibble(Model = "Simple_lm", RMSE = model_1_lm_RMSE)
 
 # Print RMSEs.
 model_rmses %>% knitr::kable()
@@ -2802,7 +2802,7 @@ model_2_multi_lm_pred <- predict(model_2_multi_lm, newdata = test_set)
 model_2_multi_lm_RMSE <- RMSE(model_2_multi_lm_pred, test_set$SalePrice) 
 
 # Record RMSE of the model.
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Multi_lm_several", RMSE = model_2_multi_lm_RMSE))
+model_rmses <- bind_rows(model_rmses, tibble(Model = "Multi_lm_several", RMSE = model_2_multi_lm_RMSE))
 
 # Print RMSEs.
 model_rmses %>% knitr::kable()
@@ -2821,7 +2821,7 @@ model_3_multi_lm_pred <- predict(model_3_multi_lm, newdata = test_set)
 model_3_multi_lm_RMSE <- RMSE(model_3_multi_lm_pred, test_set$SalePrice) 
 
 # Record RMSE of the model.
-model_rmses <- bind_rows(model_rmses, data_frame(Model = "Multi_lm_all", RMSE = model_3_multi_lm_RMSE))
+model_rmses <- bind_rows(model_rmses, tibble(Model = "Multi_lm_all", RMSE = model_3_multi_lm_RMSE))
 
 # Print RMSEs.
 model_rmses %>% knitr::kable()
@@ -2908,7 +2908,7 @@ XGBoost_baseline_RMSE <- RMSE(XGBoost_baseline_pred, test_set$SalePrice)
 
 # Record the RMSE.
 model_rmses <- bind_rows(model_rmses,
-                         data_frame(Model = "XGBoost_baseline", RMSE = XGBoost_baseline_RMSE))
+                         tibble(Model = "XGBoost_baseline", RMSE = XGBoost_baseline_RMSE))
 
 # Print the RMSE table.
 model_rmses %>% knitr::kable()
@@ -2929,27 +2929,25 @@ model_rmses %>% knitr::kable()
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 3000, 50),
+  nrounds = seq(100, 2000, 100),
   max_depth = c(2, 3, 4, 5, 6),
-  eta = 0.015,
+  eta = 0.05,
   gamma = 0,
-  colsample_bytree = 0.8,
+  colsample_bytree = 1,
   min_child_weight = seq(1, 9, 2),
-  subsample = 0.8
+  subsample = 1
 )
 
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
-  method = "repeatedcv", 
-  number = 5,
-  repeats = 3,
-  verboseIter = TRUE,
+  method = "cv", 
+  number = 20,
+  verboseIter = FALSE,
   allowParallel = TRUE
 )
 
-
 # Parallelization, which will be used to speed up hyperparameter tuning.
-cluster <- makeCluster(detectCores(logical = FALSE) - 1) 
+cluster <- makeCluster(detectCores(logical = TRUE) ) 
 registerDoParallel(cluster)
 
 # We run the model with above parameters.
@@ -2961,7 +2959,7 @@ xgb_1st_tuning <- caret::train(
   trControl = train_control,
   tuneGrid = tuneGrid,
   method = "xgbTree",
-  verbose = TRUE,
+  verbose = FALSE,
   preProcess = c("nzv", "center", "scale"),
   nthread = 1
 )
@@ -2970,12 +2968,11 @@ xgb_1st_tuning <- caret::train(
 stopCluster(cluster)
 registerDoSEQ()
 
-
 # Print the best tuning parameters.
 xgb_1st_tuning$bestTune
 
 # Visualization of the 1st tuning round.
-ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.12, 0.145))
+ggplot(xgb_1st_tuning) + scale_y_continuous(limits = c(0.12, 0.14))
 
 # Visualization of the most important features.
 vip(xgb_1st_tuning, num_features = 10) + ggtitle("Variable importance")
@@ -2987,7 +2984,7 @@ xgb_1st_tuning_pred <- predict(xgb_1st_tuning, test_set_treated)
 xgb_1st_tuning_rmse <- RMSE(xgb_1st_tuning_pred, test_set$SalePrice)
 
 model_rmses <- bind_rows(model_rmses,
-                         data_frame(Model = "caret_xgbTree_1st_tune", RMSE = xgb_1st_tuning_rmse))
+                         tibble(Model = "caret_xgbTree_1st_tune", RMSE = xgb_1st_tuning_rmse))
 
 model_rmses %>% knitr::kable()
 
@@ -2998,18 +2995,17 @@ model_rmses %>% knitr::kable()
 
 # We define a tune grid with selected ranges of hyperparameters to tune.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 3000, 50),
+  nrounds = seq(100, 2000, 100),
   max_depth = xgb_1st_tuning$bestTune$max_depth,
   eta = xgb_1st_tuning$bestTune$eta,
   gamma = 0,
-  colsample_bytree = seq(0.2, 0.7, 0.1),
+  colsample_bytree = seq(0.3, 0.8, 0.1),
   min_child_weight = xgb_1st_tuning$bestTune$min_child_weight,
-  subsample = seq(0.7, 1, 0.1)
+  subsample = seq(0.5, 1, 0.1)
 )
 
-
 # Parallelization, which will be used to speed up hyperparameter tuning.
-cluster <- makeCluster(detectCores(logical = FALSE) - 1) 
+cluster <- makeCluster(detectCores(logical = TRUE) ) 
 registerDoParallel(cluster)
 
 # We run the model with above parameters.
@@ -3022,7 +3018,8 @@ xgb_2nd_tuning <- caret::train(
   tuneGrid = tuneGrid,
   method = "xgbTree",
   verbose = FALSE,
-  preProcess = c("nzv", "center", "scale")
+  preProcess = c("nzv", "center", "scale"),
+  nthread = 1
 )
 
 # Parallelization.
@@ -3041,7 +3038,7 @@ xgb_2nd_tuning_pred <- predict(xgb_2nd_tuning, test_set_treated)
 xgb_2nd_tuning_rmse <- RMSE(xgb_2nd_tuning_pred, test_set$SalePrice)
 
 model_rmses <- bind_rows(model_rmses,
-                         data_frame(Model = "caret_xgbTree_2nd_tune", RMSE = xgb_2nd_tuning_rmse))
+                         tibble(Model = "caret_xgbTree_2nd_tune", RMSE = xgb_2nd_tuning_rmse))
 
 model_rmses %>% knitr::kable()
 
@@ -3066,21 +3063,20 @@ newvars <- treatment_plan %>%
 train_treated <- vtreat::prepare(treatment_plan, train,  varRestriction = newvars)
 test_treated <- vtreat::prepare(treatment_plan, test,  varRestriction = newvars)
 
-# Parallelization, which will be used to speed up hyperparameter tuning.
-cluster <- makeCluster(detectCores(logical = FALSE) - 1) 
-registerDoParallel(cluster)
-
 # We set the final tuning parameters.
 tuneGrid <- expand.grid(
-  nrounds = seq(150, 3000, 50),
+  nrounds = seq(200, 6000, 100),
   max_depth = xgb_2nd_tuning$bestTune$max_depth,
-  eta = xgb_2nd_tuning$bestTune$eta,
+  eta = c(0.01, 0.015, 0.02, 0.025, 0.03, 0.035),
   gamma = 0,
   colsample_bytree = xgb_2nd_tuning$bestTune$colsample_bytree,
   min_child_weight = xgb_2nd_tuning$bestTune$min_child_weight,
   subsample = xgb_2nd_tuning$bestTune$subsample
 )
 
+# Parallelization, which will be used to speed up hyperparameter tuning.
+cluster <- makeCluster(detectCores(logical = TRUE) ) 
+registerDoParallel(cluster)
 
 # Run the model with above parameters.
 xgb_final_model <- caret::train(
@@ -3090,14 +3086,15 @@ xgb_final_model <- caret::train(
   tuneGrid = tuneGrid,
   method = "xgbTree",
   verbose = FALSE,
-  preProcess = c("nzv", "center", "scale")
+  preProcess = c("nzv", "center", "scale"),
+  nthread = 1
 )
 
 # Parallelization.
 stopCluster(cluster)
 registerDoSEQ()
 
-# Best tune of final model.
+# Print the best tuning parameters.
 xgb_final_model$bestTune
 
 # Visualization of the final fitted model.
