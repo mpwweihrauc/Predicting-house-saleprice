@@ -1373,7 +1373,7 @@ dataset[train$Id, ] %>%
 
 ```
 
-It is however still possible that there are non-zero "MasVnrArea" values where "MasVnrType" is equal to "None". We will check for this and set all of these cases to zero. Indeed, several houses have an entry in "MasVnrArea" while having "MasVnrType" of "None". As it is unclear which value might be wrong, we will set "MasVnrArea" to zero in these cases. The opposite might also be possible, where a house has a type other than "None", but has an area value larger than zero. Fot hose cases we will change "MasVnrType" to "None".
+It is however still possible that there are non-zero "MasVnrArea" values where "MasVnrType" is equal to "None". We will check for this and set all of these cases to zero. Indeed, several houses have an entry in "MasVnrArea" while having "MasVnrType" of "None". As it is unclear which value might be wrong, we will set "MasVnrArea" to zero in these cases. The opposite might also be possible, where a house has a type other than "None", but has an area value larger than zero. For those cases we will change "MasVnrType" to "None".
 
 ```{r}
 # There are houses with non-zero MasVnrArea but "None" as MasVnrType.

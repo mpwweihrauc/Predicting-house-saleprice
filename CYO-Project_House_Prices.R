@@ -2941,7 +2941,7 @@ tuneGrid <- expand.grid(
 # We define a custom train control for the caret train() function.
 train_control <- trainControl(
   method = "cv", 
-  number = 20,
+  number = 3,
   verboseIter = FALSE,
   allowParallel = TRUE
 )
